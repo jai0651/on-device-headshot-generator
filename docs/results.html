@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Results · DML headshot generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="sitenav"><div class="wrap">
+  <a class="brand" href="index.html">DML · headshots</a>
+  <a class="pg" href="index.html">Start here</a>
+  <a class="pg" href="models.html">Models</a>
+  <a class="pg" href="training.html">Training</a>
+  <a class="pg" href="generation.html">Generation</a>
+  <a class="pg" href="evaluation.html">Evaluation</a>
+  <a class="pg" href="infra.html">Where it runs</a>
+  <a class="pg on" href="results.html">Results</a>
+  <a class="pg" href="../on-device-headshot-generator.html">Study notes ↗</a>
+</div></nav>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">DML · what came out</p>
+    <h1>Results</h1>
+    <p class="standfirst">Stage by stage, what each run actually produced: the pictures, the curves and the numbers, with what each one taught.</p>
+  </div>
+</header>
+<div class="wrap"><div class="single"><article>
+
+
+<div class="callout warn">
+<span class="label">Local images</span>
+<p>The pictures on this page load from the project's <code>outputs/</code> and <code>lora_data/</code>
+folders, which are git-ignored because several contain a real person's face. They show when these
+pages are opened from the project folder.</p>
+</div>
+
+<h2 id="s0">Stage 0: a diffusion model from scratch</h2>
+
+<p>A 6.47M-parameter UNet trained on MNIST for 20 epochs on an RTX 3090 (~23 s per epoch).
+The grid starts from the same noise every epoch, so the same 64 samples can be watched sharpening.</p>
+
+<div class="grid2">
+<div><img class="shot" style="background:#000" src="../outputs/stage0/mnist/samples_epoch000.png" alt="epoch 0 samples"><p class="shotcap">Epoch 0: strokes, not digits yet.</p></div>
+<div><img class="shot" style="background:#000" src="../outputs/stage0/mnist/samples_epoch019.png" alt="epoch 19 samples"><p class="shotcap">Epoch 19: clean digits, from the same starting noise.</p></div>
+</div>
+
+<img class="shot" src="../outputs/stage0/mnist/steps_comparison.png" alt="DDPM vs DDIM step counts">
+<p class="shotcap">One trained model, six samplers. DDIM rows share structure (deterministic, same noise); DDPM draws fresh noise every step.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Sampler</th><th>Steps</th><th>Time for 10 images (RTX 3090)</th></tr></thead>
+<tbody>
+<tr><td>DDPM</td><td>1000</td><td>7.08 s</td></tr>
+<tr><td>DDIM</td><td>100 / 50 / 20 / 10 / 5</td><td>0.70 / 0.35 / 0.14 / 0.07 / 0.03 s</td></tr>
+</tbody></table></div>
+
+<img class="shot" src="../outputs/stage0/mnist/trajectory.png" alt="denoising trajectory">
+<p class="shotcap">Top: the noisy image at each step. Bottom: the network's guess at the final image. The digit's identity settles in the middle steps; the last ones only clean edges.</p>
+
+<h3>Then: choose the digit (class-conditional retrain)</h3>
+<p>The same UNet, retrained from scratch with a label embedding (digits 0–9 plus "any digit") added to the
+timestep embedding, and the label dropped 10% of the time. That's Stable Diffusion's text conditioning and
+classifier-free guidance in miniature. 10 epochs on an RTX 2000 Ada (~$0.08). A separately trained
+classifier (98.6% on MNIST) checks the output: <strong>80 of 80 generated digits are the digit asked for.</strong>
+Command: <code>uv run python -m stage0_ddpm.draw 7</code>.</p>
+<div class="grid2">
+<div><img class="shot" style="background:#000" src="../outputs/stage0/draw/digit_all_w3_s0.png" alt="digits 0-9 on request"><p class="shotcap">One row per requested digit, guidance 3.</p></div>
+<div><img class="shot" style="background:#18181e" src="../outputs/stage0/draw/denoise_strip.png" alt="denoising strip"><p class="shotcap">Static to digit over 50 steps. The "model's guess" rows decide the digit by step 5–10; the rest is detail.</p></div>
+</div>
+
+<h2 id="s1">Stage 1: SD 1.5, taken apart</h2>
+
+<p>The hand-written loop reproduced diffusers' output <strong>to the pixel</strong> (max difference 0),
+and so did a version using stage 0's own DDIM update inside SD. The first headshot showed both
+problems later stages exist for: the top of the head cut off, and a "navy blazer" that came out grey.</p>
+
+<div class="grid2">
+<div><img class="shot" src="../outputs/stage1/manual.png" alt="first SD headshot"><p class="shotcap">From the hand-written loop (RTX 3090). The same seed on the Mac gave a different person.</p></div>
+<div class="card" style="margin-top:14px"><h4>Measured along the way</h4>
+<p>Text 1×77×768 · latent 1×4×64×64 (48× compression) · UNet batch 2×4×64×64 under CFG · 50 UNet
+passes for 25 steps · 1.6 s per image on a 3090 vs ~37 s on the M4.</p></div>
+</div>
+
+<h2 id="s2">Stage 2: the eval harness</h2>
+
+<p>Identity separates same-person from different-person pairs at AUC 0.99 with both recognizers; the
+compliance checks caught 8 of 9 injected defects. Plain SD 1.5, the floor: CLIP 24.7, compliance
+~6/13 on average, <strong>0 of 24 images fully compliant</strong>, a stranger every time. Images and
+details are on the <a href="evaluation.html">Evaluation</a> page.</p>
+
+<h2 id="s3">Stage 3: the first face LoRA</h2>
+
+<p>17 audited photos, cropped and captioned. The training images the LoRA learned from:</p>
+<img class="shot" src="../lora_data/jai/preview.jpg" alt="training crops">
+<p class="shotcap">512×512 crops, face ≈ 40% of the height. Six outfits, many backgrounds; no head turned to the subject's left.</p>
+
+<p>Every 250 steps the LoRA generated the 8 fixed prompts. Read the grid top to bottom: at step 0 every
+face is a stranger; by step 1000 the headshot prompts are recognisably the same person.</p>
+<img class="shot" src="../outputs/stage3/r16_lr1e-4_te-off/grid.jpg" alt="run 1 checkpoint grid">
+<p class="shotcap">Run 1 (UNet LoRA only). Rows = checkpoints (0 → 2000), columns = prompts; scores under each.</p>
+
+<div class="grid2">
+<div><img class="shot" src="../outputs/stage3/r16_lr1e-4_te-off/curve.png" alt="run 1 curve"><p class="shotcap">Run 1: picked step 1500.</p></div>
+<div><img class="shot" src="../outputs/stage3/r16_lr1e-4_te5e-5/curve.png" alt="run 2 curve"><p class="shotcap">Run 2 (+ text-encoder LoRA): faster, lower peak on headshots.</p></div>
+</div>
+
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>Run 1 · UNet LoRA</th><th>Run 2 · + text encoder</th></tr></thead>
+<tbody>
+<tr><td>Identity, headshot prompts (primary / secondary)</td><td><strong>0.47 / 0.49</strong></td><td>0.45 / 0.48</td></tr>
+<tr><td>Identity, passport</td><td><strong>0.57</strong></td><td>0.50</td></tr>
+<tr><td>Identity, oil painting</td><td>0.16</td><td><strong>0.35</strong></td></tr>
+<tr><td>Flexibility CLIP</td><td><strong>26.9</strong></td><td>26.4</td></tr>
+<tr><td>Reached 0.43 identity by</td><td>step 1000</td><td><strong>step 750</strong></td></tr>
+</tbody></table></div>
+
+<p>Section 03's "helps likeness, hurts flexibility", measured: training the text encoder spreads the face
+into other styles and learns faster, at a small cost to headshots. For this product, run 1 at step
+1500 is the LoRA to use, and stage 5's benchmark.</p>
+
+<h2 id="s5">Stage 5: zero-shot identity vs the trained LoRA</h2>
+
+<p>Nine methods, one RTX A4500 session (~11 minutes, ~$0.04), 162 images, all scored on the Mac. No
+photos were uploaded: FaceID ran from 17 face embeddings computed locally. Identity is the
+<strong>secondary</strong> recognizer throughout, because FaceID is conditioned on the primary.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Method</th><th>Identity · headshots</th><th>Identity · passport</th><th>Identity · other styles</th><th>Prompts ≥ 0.30</th><th>Flexibility CLIP</th><th>Passport compliance</th></tr></thead>
+<tbody>
+<tr><td>base (plain SD 1.5)</td><td>−0.05</td><td>0.02</td><td>−0.07</td><td>0%</td><td><strong>27.0</strong></td><td>9.0 / 13</td></tr>
+<tr><td>lora (trained, 13 min)</td><td>0.49</td><td>0.64</td><td>0.17</td><td>74%</td><td>25.5</td><td>9.7 / 13</td></tr>
+<tr><td><strong>faceid_1photo</strong> (one selfie, no training)</td><td>0.67</td><td>0.72</td><td>0.70</td><td>100%</td><td>25.5</td><td>9.3 / 13</td></tr>
+<tr><td>faceid_17photos</td><td>0.77</td><td>0.81</td><td><strong>0.81</strong></td><td>100%</td><td>23.9</td><td>10.3 / 13</td></tr>
+<tr><td>faceid_17photos, scale 0.6</td><td>0.73</td><td>0.75</td><td>0.74</td><td>100%</td><td>24.5</td><td>9.3 / 13</td></tr>
+<tr><td>lora + faceid</td><td>0.78</td><td>0.79</td><td>0.75</td><td>100%</td><td>25.1</td><td>9.7 / 13</td></tr>
+<tr><td>base + pose</td><td>−0.01</td><td>−0.02</td><td>—</td><td>0%</td><td>—</td><td>10.7 / 13</td></tr>
+<tr><td>lora + pose</td><td>0.52</td><td>0.59</td><td>—</td><td>100%</td><td>—</td><td>11.0 / 13</td></tr>
+<tr><td><strong>faceid_17photos + pose</strong></td><td><strong>0.82</strong></td><td><strong>0.82</strong></td><td>—</td><td>100%</td><td>—</td><td><strong>11.3 / 13</strong></td></tr>
+</tbody></table></div>
+
+<div class="callout key">
+<span class="label">The headline, and the opposite of what the study notes expected</span>
+<p>By the independent metric, <strong>zero-shot FaceID from one selfie (0.67) beats the trained LoRA
+(0.49)</strong> on headshots, with no per-person training and no photo upload, which is the property
+the on-device product needs. It also carries the face into other styles (0.70 vs 0.17). With 17
+photos it reaches 0.77, and 0.82 with pose control.</p>
+</div>
+
+<div class="grid2">
+<div><img class="shot" src="../outputs/stage5/faceid_1photo/contact_sheet.jpg" alt="FaceID one photo"><p class="shotcap">faceid_1photo: the same person in all 24 images, including the astronaut and the painting. Note how many came out black-and-white.</p></div>
+<div><img class="shot" src="../outputs/stage5/lora/contact_sheet.jpg" alt="LoRA"><p class="shotcap">lora: closer on some headshots, drifts on others, and still hides the face in the astronaut helmet.</p></div>
+</div>
+
+<h3>What it costs, and what isn't settled</h3>
+<ul>
+<li><strong>Prompt and colour adherence.</strong> FaceID images often come out desaturated or black-and-white
+unprompted; flexibility CLIP drops from 27.0 (base) to 23.9 with 17 photos. The face tokens partly
+override the prompt's style. Scale 0.6 recovers a little (24.5) for a little identity.</li>
+<li><strong>Is the metric fooled?</strong> Both recognizers are ArcFace-family networks, so FaceID could be making a
+face ArcFace-style models like rather than one people recognise. One check argues against it:
+FaceID's primary scores (the recognizer it was built on) are no higher than its secondary ones
+(0.65 vs 0.67). The real test is a person who knows the face, so there's a blind A/B test,
+<code>outputs/stage5/blind_test.jpg</code>, pending.</li>
+<li><strong>Stacking.</strong> LoRA + FaceID (0.78) is no better than FaceID alone (0.77) and follows prompts a
+bit better. They don't fight, but the LoRA adds little on top.</li>
+<li><strong>Pose control fixes framing, not compliance.</strong> It adds 1–1.7 passing checks for every method, but
+still 0 of the passport images pass all 13: background, lighting and sharpness remain. That's the
+job of the edit path (stage 5c).</li>
+<li><strong>Licensing.</strong> FaceID is non-commercial (built on insightface). The architecture works; a product
+needs it retrained on a commercially licensed face encoder.</li>
+</ul>
+
+<h2 id="s5c">Stage 5c: the edit path, and the FaceID colour fix</h2>
+
+<p>Instead of generating a face, keep the real one: reframe a selfie to passport geometry, keep the
+face and hair pixels, and let SD 1.5's inpainting model (with the passport pose ControlNet) paint
+clothes and backdrop around them. Optionally, a low-strength img2img pass over the whole image
+("harmonize") to match the face's lighting to the new scene. 3 selfies × 3 outfits × 3 seeds, one
+RTX 3090 session (~$0.07). Three face crops were uploaded for this; no other photos.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Method</th><th>Identity (secondary)</th><th>Passport compliance</th><th>Pass all 13 checks</th></tr></thead>
+<tbody>
+<tr><td>best generated method (faceid 17 + pose)</td><td>0.82</td><td>11.3 / 13</td><td>0</td></tr>
+<tr><td><strong>edit path, no harmonize</strong></td><td><strong>0.89</strong></td><td><strong>11.4 / 13</strong></td><td><strong>8 of 27</strong></td></tr>
+<tr><td>edit path, harmonize 0.20</td><td>0.81</td><td>11.4 / 13</td><td>8 of 27</td></tr>
+<tr><td>edit path, harmonize 0.35</td><td>0.69</td><td>11.4 / 13</td><td>—</td></tr>
+</tbody></table></div>
+
+<div class="callout good">
+<span class="label">First fully compliant images in the project</span>
+<p>8 of 27 edit-path images pass every one of the 13 ID-photo checks; every generated method,
+including FaceID with pose control, scored 0. Identity is 0.85–0.91, above any generated face,
+because it's the real face. This is the design the system-design page proposed, now measured.</p>
+</div>
+
+<img class="shot" src="../outputs/stage5c/edit_h0.00/contact_sheet.jpg" alt="edit path results">
+<p class="shotcap">Edit path, no harmonize: three selfies (rows of 9), blazer / suit / ID-photo outfits, three seeds each.</p>
+
+<ul>
+<li><strong>What still fails:</strong> background uniformity (12 of 27), uneven face lighting carried over from the
+selfie (12), sharpness (6), crown margin (3). The lighting failures are the selfie's own light;
+harmonize is meant to fix them, but it costs identity fast (0.89 → 0.81 → 0.69).</li>
+<li><strong>A bug found by looking:</strong> two ID-photo images got garbled text painted on the t-shirt.
+Fix: "text, letters, logo, watermark" in the negative prompt.</li>
+<li><strong>The trade-off vs generation:</strong> the edit path can't change the angle, expression or hairstyle:
+you get your selfie's pose. Generation (FaceID) can, at lower identity. A product offers both.</li>
+</ul>
+
+<h3>FaceID colour fix</h3>
+<p>Adding "black and white, monochrome, grayscale, desaturated" to the negative prompt took FaceID's
+near-greyscale images from <strong>6 of 24 to 0 of 24</strong>, with identity unchanged (0.67 → 0.68) and
+passport compliance up (9.3 → 10.0). Mean saturation doubled (53 → 106), above the LoRA's 65:
+vivid, slightly punchy. The astronaut now shows the face.</p>
+<img class="shot" src="../outputs/stage5_colorfix/faceid_1photo/contact_sheet.jpg" alt="FaceID colour fix">
+<p class="shotcap">FaceID from one selfie, with the colour-fix negative prompt.</p>
+
+<h2 id="s6">Stage 6: Core ML, on the Neural Engine</h2>
+
+<p>Everything on the Mac, no GPU pod. The face LoRA was folded into the UNet weights (exact to 4.7×10⁻⁶),
+the UNet converted to Core ML FP16 with Apple's converter (77 s, 8 GB peak RAM), and the text encoder and
+VAE reused from Apple's official conversion, since the LoRA never touched them.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>Agreement with PyTorch</th><th>Per UNet step</th><th>Per image</th><th>Identity</th></tr></thead>
+<tbody>
+<tr><td>PyTorch, RTX 3090 (reference)</td><td>—</td><td>—</td><td>~1.6 s</td><td>0.49</td></tr>
+<tr><td>Core ML, M4 GPU</td><td>75.3 dB</td><td>0.62 s</td><td>18.5 s (throttles 17 → 22)</td><td>0.47</td></tr>
+<tr><td><strong>Core ML, M4 Neural Engine</strong></td><td>36.0 dB</td><td><strong>0.37 s</strong></td><td><strong>9.9 s, flat</strong></td><td><strong>0.44</strong></td></tr>
+<tr><td>Core ML, CPU only</td><td><strong>100% NaN</strong></td><td>1.84 s</td><td>—</td><td>—</td></tr>
+</tbody></table></div>
+
+<img class="shot" src="../outputs/stage6/ane_vs_gpu.jpg" alt="Neural Engine vs GPU">
+<p class="shotcap">Same seed, same Core ML UNet. Pixel-wise they differ (18.8 dB), but it's the same person, pose and composition.</p>
+
+<ul>
+<li><strong>The face survives conversion</strong>, and the Neural Engine costs ~0.02 identity.</li>
+<li><strong>100% of the UNet's 3,057 ops run on the Neural Engine</strong>, with zero device switches. VAE decoder:
+397/397. Text encoder: 399/408 (9 token-bookkeeping ops on CPU).</li>
+<li><strong>Every network wants the Neural Engine on this chip</strong>: the VAE decoder is 2.8× faster there than on
+the GPU (0.23 vs 0.64 s). End to end ≈ 9.5 s per 512² image at 25 steps, before any quantization or LCM.</li>
+<li><strong>ANE drift is a different sample, not a worse one</strong>: 36 dB per step compounds into a different image
+of the same person. So ANE output is validated with scores, never by pixel-diffing against a GPU render.</li>
+</ul>
+
+<h3>Pose control on the Neural Engine: the head-cropping fix</h3>
+<p>The Core ML UNet alone cut the head off in 5 of 6 images: SD 1.5's own habit plus training crops with too little
+headroom. The pose ControlNet, converted to Core ML (690 MB) together with a UNet that accepts its 13 residuals,
+pins the head where the passport skeleton puts it.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Core ML, Neural Engine</th><th>Head cut off</th><th>Identity</th><th>Compliance</th><th>Per image</th></tr></thead>
+<tbody>
+<tr><td>UNet alone</td><td>5 / 6</td><td>0.44</td><td>7.4 / 13</td><td>9.9 s</td></tr>
+<tr><td><strong>+ pose ControlNet</strong></td><td><strong>0 / 8</strong></td><td><strong>0.49</strong></td><td><strong>11.4 / 13</strong></td><td>14.6 s</td></tr>
+</tbody></table></div>
+<div class="grid2">
+<div><img class="shot" src="../outputs/stage6/mine/preview.jpg" alt="without pose"><p class="shotcap">Without pose: the head leaves the frame.</p></div>
+<div><img class="shot" src="../outputs/stage6/mine/preview_pose.jpg" alt="with pose"><p class="shotcap">With pose, same prompt: whole head, centred, with headroom.</p></div>
+</div>
+
+<h2 id="s7">Stage 7: quantization, how small before it stops being you</h2>
+
+<p>The phone path's UNet (face folded in, pose inputs) palettized after training to 8, 6 and 4 bits:
+each layer's weights clustered into 256 / 64 / 16 values. No retraining. All on the Mac.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>UNet</th><th>Size</th><th>Per image</th><th>Identity</th><th>Image PSNR vs FP16</th><th>Prompt CLIP</th><th>Compliance</th></tr></thead>
+<tbody>
+<tr><td>FP16</td><td>1,721 MB</td><td>16.9 s</td><td>0.49</td><td>—</td><td>24.3</td><td>11.4</td></tr>
+<tr><td><strong>8-bit</strong></td><td><strong>862 MB</strong></td><td>14.3 s</td><td><strong>0.49</strong></td><td><strong>31.7 dB</strong></td><td>24.3</td><td>11.4</td></tr>
+<tr><td>6-bit</td><td>647 MB</td><td>15.6 s</td><td>0.46</td><td>21.3 dB</td><td>24.2</td><td>11.4</td></tr>
+<tr><td>4-bit</td><td>432 MB</td><td>14.8 s</td><td><strong>0.33</strong></td><td><strong>12.2 dB</strong></td><td>23.9</td><td>11.8</td></tr>
+</tbody></table></div>
+
+<img class="shot" src="../outputs/stage7/bits_grid.jpg" alt="FP16 / 8 / 6 / 4-bit">
+<p class="shotcap">Same seed, same prompts. 8-bit is the same image; 6-bit shifts details; 4-bit is noisy and harsh.</p>
+
+<ul>
+<li><strong>8-bit is free</strong>: half the size, no measurable loss. The shipping default.</li>
+<li><strong>Identity breaks before "quality" does</strong>: at 4-bit, identity falls to the same-person line while CLIP
+and the compliance count barely move. Open question 1, answered.</li>
+<li><strong>A harness gap, closed</strong>: CLIP and compliance can't see texture artifacts. Image PSNR against the FP16
+output at the same seed can, and now goes into every compression comparison.</li>
+</ul>
+
+<h2 id="s8">Stage 8: LCM, 4 steps instead of 25</h2>
+
+<p>The LCM-LoRA distils SD 1.5 so each step jumps toward the finished image: 4 steps, no CFG, one UNet
+call per step. Folded into the UNet next to the face LoRA, single-pass, 8-bit, on the Neural Engine.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Phone path, M4 Neural Engine</th><th>UNet calls</th><th>Per image</th><th>Identity</th><th>Compliance</th></tr></thead>
+<tbody>
+<tr><td>stage 7: 8-bit, 25 steps, CFG 6</td><td>50</td><td>16.9 s</td><td>0.49</td><td>11.4 / 13</td></tr>
+<tr><td><strong>stage 8: 8-bit, LCM 4, CFG 1</strong></td><td><strong>4</strong></td><td><strong>1.34 s</strong></td><td><strong>0.60</strong></td><td><strong>11.8 / 13</strong></td></tr>
+</tbody></table></div>
+
+<img class="shot" src="../outputs/stage8/lcm_grid.jpg" alt="baseline vs LCM">
+<p class="shotcap">PyTorch comparison, same seeds: 25-step baseline (top), LCM 8 (middle), LCM 4 (bottom).</p>
+
+<ul>
+<li><strong>12.6× faster and more like you.</strong> Open question 4 answered the opposite way to the guess: distillation
+raised identity (PyTorch: 0.45 → 0.63) at unchanged prompt adherence.</li>
+<li><strong>Why:</strong> generated faces became as consistent with each other (0.73–0.76) as real photos of you are (0.73).
+The guidance-6 baseline was the inconsistent one (0.43), pulled toward a generic face.</li>
+<li><strong>The cost:</strong> less variety of expression and angle, a smoother, more airbrushed look.</li>
+<li><strong>Sustained:</strong> 50 in a row, median 1.30 → 1.50 s, no thermal warning. The iPhone, with far less cooling,
+is still the number that matters.</li>
+</ul>
+
+<hr><div class="pagelinks"><a href="infra.html"><span class="t">← Where it runs</span><span class="d">previous page</span></a></div>
+</article></div></div>
+<footer><div class="wrap">DML · on-device headshot generator · Results</div></footer>
+</body>
+</html>

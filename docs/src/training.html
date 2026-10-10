@@ -1,0 +1,162 @@
+<!-- title: Training | eyebrow: DML · under the hood | lede: The two things this project actually trains, a small diffusion model from scratch and a face LoRA on top of Stable Diffusion: what is frozen, what learns, what one training step computes, and how a checkpoint gets picked. -->
+
+<h2 id="two">Two very different kinds of training</h2>
+
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>Stage 0 · DDPM from scratch</th><th>Stage 3 · face LoRA</th></tr></thead>
+<tbody>
+<tr><td>Goal</td><td>understand diffusion by building it</td><td>teach SD 1.5 one specific face</td></tr>
+<tr><td>Starts from</td><td>random weights</td><td>SD 1.5, fully trained, <strong>frozen</strong></td></tr>
+<tr><td>Trains</td><td>all 6.47M parameters</td><td>3.19M LoRA parameters, 0.37% of the UNet</td></tr>
+<tr><td>Data</td><td>60,000 MNIST digits, 28×28</td><td>17 photos of one person, 512×512 crops + captions</td></tr>
+<tr><td>Works in</td><td>pixel space</td><td>SD's latent space (4×64×64)</td></tr>
+<tr><td>Conditioning</td><td>none (unconditional digits)</td><td>a caption per photo, through the frozen text encoder</td></tr>
+<tr><td>Steps · time</td><td>~9,400 steps (20 epochs) · ~8 min on a 3090</td><td>2,000 steps · ~13.5 min on a 3090</td></tr>
+<tr><td>Output</td><td>a 26 MB model that draws digits</td><td>a 6.1 MB adapter file</td></tr>
+</tbody></table></div>
+
+<p>The core loss is identical in both. Take a clean image, add a known amount of Gaussian noise, ask the
+network to predict that noise, and penalise the squared error. Everything else is what that network
+is, what it's conditioned on, and what's allowed to change.</p>
+
+<h2 id="ddpm">Stage 0: one DDPM training step</h2>
+
+<figure>
+<svg viewBox="0 0 860 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DDPM training step">
+<title>One DDPM training step</title>
+<defs><marker id="d-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="30" width="130" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="85" y="51" font-size="11.5" fill="#dde3ec">digit x₀</text><text x="85" y="68" font-size="10" fill="#76818f">1×28×28 in [−1,1]</text>
+<rect x="20" y="110" width="130" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="85" y="131" font-size="11.5" fill="#dde3ec">t ~ U(0, 999)</text><text x="85" y="148" font-size="10" fill="#76818f">ε ~ N(0, I)</text>
+<rect x="195" y="60" width="200" height="70" rx="7" fill="#10151f" stroke="#2e3a4d"/><text x="295" y="84" font-size="11.5" fill="#dde3ec">x_t = √ᾱ_t·x₀ + √(1−ᾱ_t)·ε</text><text x="295" y="104" font-size="10" fill="#76818f">closed form: no loop,</text><text x="295" y="118" font-size="10" fill="#76818f">jump straight to step t</text>
+<rect x="440" y="55" width="150" height="80" rx="7" fill="#161d29" stroke="#f0b429" stroke-width="1.6"/><text x="515" y="80" font-size="12" fill="#f0b429">UNet (ours)</text><text x="515" y="98" font-size="10" fill="#93a0b4">6.47M · all trainable</text><text x="515" y="114" font-size="10" fill="#76818f">sees x_t and t</text>
+<rect x="635" y="60" width="200" height="70" rx="7" fill="#10151f" stroke="#c0392b"/><text x="735" y="86" font-size="11.5" fill="#dde3ec">loss = ‖ε̂ − ε‖²</text><text x="735" y="106" font-size="10" fill="#76818f">did it guess the noise?</text>
+<rect x="440" y="180" width="395" height="50" rx="7" fill="#10151f" stroke="#2e3a4d"/><text x="637" y="201" font-size="11" fill="#dde3ec">backprop → AdamW updates every weight · EMA copy (0.9995)</text><text x="637" y="218" font-size="10" fill="#76818f">sampling uses the EMA weights: smoother images</text>
+</g>
+<path d="M150 55 H193 M150 135 H193 M395 95 H438 M590 95 H633 M735 130 V178" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#d-ar)"/>
+<path d="M515 180 V137" stroke="#c0392b" stroke-width="1.3" stroke-dasharray="3 3" fill="none" marker-end="url(#d-ar)"/>
+<text x="590" y="160" font-family="ui-monospace,Menlo,monospace" font-size="9.5" fill="#76818f">ε̂ = predicted noise</text>
+</svg>
+<figcaption>Repeat ~9,400 times. Sampling then runs the network backwards from pure noise: 1000 steps (DDPM) or 50 (DDIM).</figcaption>
+</figure>
+
+<h2 id="lora">Stage 3: the face LoRA</h2>
+
+<h3>Before the GPU: preparing the data (on the Mac)</h3>
+
+<figure>
+<svg viewBox="0 0 860 150" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dataset preparation pipeline">
+<title>Dataset preparation</title>
+<defs><marker id="p-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="40" width="140" height="64" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="90" y="64" font-size="11.5" fill="#dde3ec">photos/jai/</text><text x="90" y="82" font-size="10" fill="#76818f">17 phone photos</text><text x="90" y="96" font-size="10" fill="#76818f">never leave the Mac</text>
+<rect x="195" y="40" width="190" height="64" rx="7" fill="#10151f" stroke="#5ec27e"/><text x="290" y="62" font-size="11.5" fill="#5ec27e">audit_dataset.py</text><text x="290" y="80" font-size="10" fill="#93a0b4">same person? sharp? bursts?</text><text x="290" y="94" font-size="10" fill="#93a0b4">angles, sessions, lens</text>
+<rect x="420" y="40" width="190" height="64" rx="7" fill="#10151f" stroke="#5ec27e"/><text x="515" y="62" font-size="11.5" fill="#5ec27e">prepare_dataset.py</text><text x="515" y="80" font-size="10" fill="#93a0b4">EXIF-rotate, find face,</text><text x="515" y="94" font-size="10" fill="#93a0b4">512² crop, face ≈ 40%</text>
+<rect x="645" y="40" width="195" height="64" rx="7" fill="#10151f" stroke="#f0b429"/><text x="742" y="62" font-size="11.5" fill="#f0b429">captions.json</text><text x="742" y="80" font-size="10" fill="#93a0b4">"photo of ohwx man, yellow</text><text x="742" y="94" font-size="10" fill="#93a0b4">kurta, cloudy sky, smiling"</text>
+</g>
+<path d="M160 72 H193 M385 72 H418 M610 72 H643" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#p-ar)"/>
+<text x="430" y="135" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#76818f" text-anchor="middle">only the 17 crops + captions are uploaded to the GPU pod (6.8 MB)</text>
+</svg>
+</figure>
+
+<div class="callout key">
+<span class="label">The captioning rule, and why it's the most important step</span>
+<p>Caption what should stay <em>changeable</em>, and never describe the face. The shirt, background,
+lighting and expression get words, so the model ties them to those words. The face is the only thing
+present in every photo and named by nothing except <code>ohwx man</code>, so that's what the token
+absorbs. Leave the red tilak or the hanging sunglasses uncaptioned and they'd become part of "you".
+The trigger is <code>ohwx</code> rather than the usual <code>sks</code> because <code>sks</code>
+already means a rifle to SD 1.5.</p>
+</div>
+
+<h3>One LoRA training step (on the GPU)</h3>
+
+<figure>
+<svg viewBox="0 0 860 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LoRA training step: frozen and trainable parts">
+<title>One LoRA training step</title>
+<defs>
+<marker id="l-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker>
+<marker id="l-ag" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f0b429"/></marker>
+</defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<text x="130" y="24" font-size="11" fill="#93a0b4">ONCE, before step 1</text>
+<rect x="20" y="36" width="220" height="56" rx="7" fill="#10151f" stroke="#7aa2d8"/><text x="130" y="58" font-size="11.5" fill="#7aa2d8">VAE encoder · frozen</text><text x="130" y="76" font-size="10" fill="#93a0b4">17 crops → mean, std (4×64×64)</text>
+<rect x="20" y="104" width="220" height="56" rx="7" fill="#10151f" stroke="#7aa2d8"/><text x="130" y="126" font-size="11.5" fill="#7aa2d8">text encoder · frozen</text><text x="130" y="144" font-size="10" fill="#93a0b4">17 captions → 77×768 each</text>
+<rect x="20" y="172" width="220" height="44" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="130" y="199" font-size="10.5" fill="#dde3ec">cached on the GPU; VAE moved off</text>
+
+<text x="560" y="24" font-size="11" fill="#93a0b4">EVERY STEP (2000×)</text>
+<rect x="290" y="36" width="210" height="56" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="395" y="58" font-size="11" fill="#dde3ec">pick 1 photo (shuffled)</text><text x="395" y="76" font-size="10" fill="#76818f">z = mean + std·N(0,1)</text>
+<rect x="290" y="104" width="210" height="56" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="395" y="126" font-size="11" fill="#dde3ec">t ~ U(0,999), ε ~ N(0,I)</text><text x="395" y="144" font-size="10" fill="#76818f">z_t = add_noise(z·0.18215, ε, t)</text>
+<rect x="545" y="44" width="295" height="190" rx="9" fill="#0b0f17" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="692" y="66" font-size="12" fill="#7aa2d8">UNet · 860M frozen</text>
+<text x="692" y="84" font-size="10" fill="#93a0b4">bf16 autocast · gradient checkpointing</text>
+<rect x="565" y="98" width="255" height="60" rx="7" fill="#161d29" stroke="#f0b429" stroke-width="1.6"/>
+<text x="692" y="120" font-size="11.5" fill="#f0b429">+ LoRA · 3.19M TRAINABLE</text>
+<text x="692" y="138" font-size="10" fill="#93a0b4">128 projections: W·x + B·A·x</text>
+<text x="692" y="151" font-size="10" fill="#76818f">B starts at 0 → step 0 = base model</text>
+<text x="692" y="186" font-size="10.5" fill="#dde3ec">in: z_t, t, caption embedding</text>
+<text x="692" y="204" font-size="10.5" fill="#dde3ec">out: ε̂ (4×64×64)</text>
+<rect x="290" y="260" width="250" height="70" rx="7" fill="#10151f" stroke="#c0392b"/>
+<text x="415" y="283" font-size="11.5" fill="#dde3ec">loss = ‖ε̂ − ε‖² × w(t)</text>
+<text x="415" y="301" font-size="10" fill="#93a0b4">min-SNR weight w = min(SNR, 5)/SNR:</text>
+<text x="415" y="316" font-size="10" fill="#76818f">easy low-noise steps count less</text>
+<rect x="590" y="260" width="250" height="70" rx="7" fill="#161d29" stroke="#f0b429"/>
+<text x="715" y="283" font-size="11.5" fill="#f0b429">backprop → LoRA only</text>
+<text x="715" y="301" font-size="10" fill="#93a0b4">AdamW lr 1e-4 · warmup 100</text>
+<text x="715" y="316" font-size="10" fill="#76818f">cosine decay · grad clip 1.0</text>
+<rect x="20" y="352" width="820" height="54" rx="8" fill="#10151f" stroke="#5ec27e"/>
+<text x="430" y="374" font-size="11.5" fill="#5ec27e">every 250 steps: save the LoRA (fp16, 6.1 MB) + generate the 8 fixed prompts with it</text>
+<text x="430" y="392" font-size="10" fill="#76818f">→ JPEGs come back to the Mac → identity, CLIP and compliance per checkpoint → the curve picks one</text>
+</g>
+<path d="M240 64 H288 M240 132 H288 M500 64 H543 M500 132 H543" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#l-ar)"/>
+<path d="M692 234 V258 M540 295 H588" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#l-ar)"/>
+<path d="M805 260 V160" stroke="#f0b429" stroke-width="1.4" stroke-dasharray="3 3" fill="none" marker-end="url(#l-ag)"/>
+<text x="752" y="251" font-family="ui-monospace,Menlo,monospace" font-size="9.5" fill="#f0b429">gradients</text>
+</svg>
+<figcaption>Blue = frozen, gold = trainable. The VAE and text encoder run once; the UNet runs forward and backward every step.</figcaption>
+</figure>
+
+<h3>What the LoRA actually is, in numbers</h3>
+
+<div class="grid2">
+<div class="card"><h4>The update</h4>
+<p>For a frozen weight <code>W</code> (d × k), train <code>A</code> (r × k) and <code>B</code> (d × r),
+and use <code>W + (α/r)·B·A</code>. With r = α = 16, the scale is 1.</p>
+<p>A 320×320 projection is 102,400 frozen numbers. Its LoRA is 16×320 + 320×16 = 10,240 trainable ones.</p></div>
+<div class="card"><h4>Where, and how many</h4>
+<p>16 transformer blocks × 2 attentions (self, cross) × 4 projections (q, k, v, out) = <strong>128
+LoRA pairs</strong>, 256 tensors, <strong>3.19M parameters</strong>. The text-encoder variant adds
+12 layers × 4 = 48 more pairs, 1.18M parameters.</p></div>
+</div>
+
+<h3>Settings used</h3>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Setting</th><th>Value</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Rank / alpha</td><td>16 / 16</td><td>faces need more capacity than styles; alpha = rank keeps lr meaningful</td></tr>
+<tr><td>Learning rate</td><td>1e-4 (UNet), 5e-5 (text encoder when on)</td><td>the standard starting point; the most sensitive knob</td></tr>
+<tr><td>Steps · batch</td><td>2000 · 1</td><td>~100 × image count, plus margin to see overcooking</td></tr>
+<tr><td>Resolution</td><td>512</td><td>SD 1.5's native size</td></tr>
+<tr><td>Precision</td><td>fp32 master weights, bf16 autocast, TF32</td><td>speed without fp16 overflow risk</td></tr>
+<tr><td>Loss weighting</td><td>min-SNR, γ = 5</td><td>stabler training; stops low-noise steps dominating</td></tr>
+<tr><td>Horizontal flip</td><td>off</td><td>a face isn't symmetric: flipping would mirror the hair parting</td></tr>
+<tr><td>Checkpoints</td><td>every 250 steps, each sampled on the fixed prompt set</td><td>the best LoRA is almost never the last one</td></tr>
+</tbody></table></div>
+
+<h2 id="pick">Picking a checkpoint: a measurement, not a vibe</h2>
+
+<p>Each checkpoint's 8 sample images are scored on the Mac for identity (two recognizers), prompt
+adherence (CLIP) and compliance. The rule: take the highest identity among checkpoints that still
+follow prompts at least 90% as well as the untrained model. For run 1 that was step 1500.</p>
+
+<img class="shot" src="../outputs/stage3/r16_lr1e-4_te-off/curve.png" alt="identity and CLIP by training step">
+<p class="shotcap">Run 1: identity (green) climbs from stranger to ~0.47 and levels off; prompt adherence (red) never collapses, so it isn't overcooked at 2000 steps.</p>
+
+<div class="callout">
+<span class="label">What's frozen is the point</span>
+<p>Nothing in the base model moves. That's why the LoRA can't forget how to draw a suit or a
+mountain, why 17 photos are enough, and why the result is a 6 MB file rather than a 2 GB model.
+It's also why it doesn't fit the on-device product: each user would still need a GPU run, which is
+the problem stage 5's zero-shot FaceID removes.</p>
+</div>

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+data/
+runs/
+*.pt
+.DS_Store
+.env
+outputs/
+models/
+outputs_raw/
+photos/
+lora_data/
+.venv-coreml/

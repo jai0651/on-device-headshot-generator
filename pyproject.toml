@@ -1,0 +1,21 @@
+[project]
+name = "dml"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "accelerate>=1.15.0",
+    "diffusers>=0.40.0",
+    "huggingface-hub>=1.33.0",
+    "insightface>=2.0",
+    "matplotlib>=3.11.2",
+    "mediapipe>=0.10.14,<1",
+    "onnxruntime>=1.30.0",
+    "opencv-python-headless>=5.0.0.93",
+    "peft>=0.21.0",
+    "safetensors>=0.8.0",
+    "scikit-learn>=1.9.1",
+    "torch>=2.14.0",
+    "torchvision>=0.29.0",
+    "tqdm>=4.70.1",
+    "transformers>=5.17.0",
+]

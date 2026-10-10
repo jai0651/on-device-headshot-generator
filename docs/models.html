@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Models · DML headshot generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="sitenav"><div class="wrap">
+  <a class="brand" href="index.html">DML · headshots</a>
+  <a class="pg" href="index.html">Start here</a>
+  <a class="pg on" href="models.html">Models</a>
+  <a class="pg" href="training.html">Training</a>
+  <a class="pg" href="generation.html">Generation</a>
+  <a class="pg" href="evaluation.html">Evaluation</a>
+  <a class="pg" href="infra.html">Where it runs</a>
+  <a class="pg" href="results.html">Results</a>
+  <a class="pg" href="../on-device-headshot-generator.html">Study notes ↗</a>
+</div></nav>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">DML · under the hood</p>
+    <h1>Models</h1>
+    <p class="standfirst">Every network in the project: which ones are downloaded open-source weights and which ones we trained, what goes into each and what comes out, and exactly where our additions plug into Stable Diffusion.</p>
+  </div>
+</header>
+<div class="wrap"><div class="single"><article>
+
+
+<h2 id="split">Open-source vs trained by us</h2>
+
+<p>Almost everything is a <strong>pretrained open-source model used frozen</strong>. The project trains
+exactly two things: a tiny diffusion model in stage 0 (to learn how diffusion works), and a
+<strong>face LoRA</strong>, a 3.2M-parameter add-on that teaches Stable Diffusion one face. Everything
+else is either downloaded or <em>built</em> (code, not weights): the evaluation harness, the pose
+template, the dataset audit.</p>
+
+<figure>
+<svg viewBox="0 0 860 470" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open-source models versus models trained in this project">
+<title>Open-source (frozen) vs trained here</title>
+<defs><marker id="m-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace">
+<rect x="16" y="16" width="520" height="438" rx="10" fill="#0b0f17" stroke="#7aa2d8" stroke-dasharray="4 4"/>
+<text x="32" y="42" font-size="13" fill="#7aa2d8">OPEN-SOURCE · downloaded · frozen</text>
+<text x="32" y="60" font-size="11" fill="#76818f">we never change these weights</text>
+
+<text x="32" y="88" font-size="11" fill="#93a0b4">GENERATION (GPU pod)</text>
+<rect x="32" y="96" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="115" font-size="12" fill="#dde3ec">SD 1.5 text encoder</text><text x="44" y="131" font-size="10.5" fill="#76818f">CLIP ViT-L/14 text · 123M</text>
+<rect x="284" y="96" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="296" y="115" font-size="12" fill="#dde3ec">SD 1.5 UNet</text><text x="296" y="131" font-size="10.5" fill="#76818f">860M · predicts noise</text>
+<rect x="32" y="148" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="167" font-size="12" fill="#dde3ec">SD 1.5 VAE</text><text x="44" y="183" font-size="10.5" fill="#76818f">84M · pixels ⇄ latents</text>
+<rect x="284" y="148" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="296" y="167" font-size="12" fill="#dde3ec">IP-Adapter-FaceID + LoRA</text><text x="296" y="183" font-size="10.5" fill="#76818f">48M + 26M · face → UNet</text>
+<rect x="32" y="200" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="219" font-size="12" fill="#dde3ec">ControlNet openpose</text><text x="44" y="235" font-size="10.5" fill="#76818f">361M · pose → layout</text>
+<rect x="284" y="200" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="296" y="219" font-size="12" fill="#dde3ec">DPM++ 2M Karras sampler</text><text x="296" y="235" font-size="10.5" fill="#76818f">an algorithm, 0 weights</text>
+
+<text x="32" y="276" font-size="11" fill="#93a0b4">MEASUREMENT (Mac, CPU)</text>
+<rect x="32" y="284" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="303" font-size="12" fill="#dde3ec">insightface buffalo_l</text><text x="44" y="319" font-size="10.5" fill="#76818f">ArcFace R50 · primary ID</text>
+<rect x="284" y="284" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="296" y="303" font-size="12" fill="#dde3ec">insightface antelopev2</text><text x="296" y="319" font-size="10.5" fill="#76818f">ArcFace R100 · secondary ID</text>
+<rect x="32" y="336" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="355" font-size="12" fill="#dde3ec">MediaPipe face landmarker</text><text x="44" y="371" font-size="10.5" fill="#76818f">478 points + 52 blendshapes</text>
+<rect x="284" y="336" width="236" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="296" y="355" font-size="12" fill="#dde3ec">MediaPipe selfie segmenter</text><text x="296" y="371" font-size="10.5" fill="#76818f">6 classes · hair / face / bg</text>
+<rect x="32" y="388" width="488" height="44" rx="7" fill="#10151f" stroke="#2e3a4d"/>
+<text x="44" y="407" font-size="12" fill="#dde3ec">CLIP ViT-L/14 (full, image + text)</text><text x="44" y="423" font-size="10.5" fill="#76818f">428M · prompt-adherence score</text>
+
+<rect x="560" y="16" width="284" height="438" rx="10" fill="#0b0f17" stroke="#f0b429" stroke-dasharray="4 4"/>
+<text x="576" y="42" font-size="13" fill="#f0b429">TRAINED BY US</text>
+<text x="576" y="60" font-size="11" fill="#76818f">weights that didn't exist before</text>
+<rect x="576" y="80" width="252" height="62" rx="7" fill="#161d29" stroke="#f0b429" stroke-width="1.5"/>
+<text x="590" y="102" font-size="12.5" fill="#f0b429">face LoRA (stage 3)</text>
+<text x="590" y="119" font-size="10.5" fill="#93a0b4">3.19M params · 6.1 MB fp16</text>
+<text x="590" y="134" font-size="10.5" fill="#76818f">17 photos · 2000 steps · 13 min</text>
+<rect x="576" y="152" width="252" height="62" rx="7" fill="#161d29" stroke="#f0b429"/>
+<text x="590" y="174" font-size="12.5" fill="#f0b429">DDPM UNet (stage 0)</text>
+<text x="590" y="191" font-size="10.5" fill="#93a0b4">6.47M params · from scratch</text>
+<text x="590" y="206" font-size="10.5" fill="#76818f">MNIST digits · learning only</text>
+
+<text x="576" y="246" font-size="13" fill="#5ec27e">BUILT BY US (code, no weights)</text>
+<rect x="576" y="258" width="252" height="176" rx="7" fill="#10151f" stroke="#5ec27e"/>
+<text x="590" y="280" font-size="11.5" fill="#dde3ec">· hand-written SD sampling loop</text>
+<text x="590" y="300" font-size="11.5" fill="#dde3ec">· eval harness: identity, CLIP,</text>
+<text x="590" y="316" font-size="11.5" fill="#dde3ec">  13 compliance checks</text>
+<text x="590" y="336" font-size="11.5" fill="#dde3ec">· dataset audit + captions</text>
+<text x="590" y="356" font-size="11.5" fill="#dde3ec">· passport pose template</text>
+<text x="590" y="376" font-size="11.5" fill="#dde3ec">· FaceID embeddings (computed)</text>
+<text x="590" y="396" font-size="11.5" fill="#dde3ec">· fixed prompt set v2</text>
+<text x="590" y="416" font-size="11.5" fill="#dde3ec">· pod automation</text>
+</g>
+</svg>
+<figcaption>Blue = someone else's weights, used as-is. Gold = weights we trained. Green = our code.</figcaption>
+</figure>
+
+<div class="callout key">
+<span class="label">Why so little training</span>
+<p>Training a text-to-image model from scratch costs millions of GPU-hours. What this project does is
+<strong>adapt</strong> one: the face LoRA touches 0.37% of the UNet's parameters, trains in 13
+minutes, and leaves the other 99.63% exactly as Stability AI released them. Stage 5's FaceID goes
+further and trains <em>nothing</em> per person. That difference is the whole on-device question.</p>
+</div>
+
+<h2 id="inventory">The full inventory</h2>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Model</th><th>Source</th><th>Params · file</th><th>Licence</th><th>Our use</th><th>Runs on</th></tr></thead>
+<tbody>
+<tr><td>SD 1.5 text encoder</td><td><span class="tag-oss">open</span> stable-diffusion-v1-5</td><td>123M · 246 MB fp16</td><td>CreativeML OpenRAIL-M</td><td>prompt → 77×768 embedding</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>SD 1.5 UNet</td><td><span class="tag-oss">open</span> stable-diffusion-v1-5</td><td>860M · 1.7 GB fp16</td><td>CreativeML OpenRAIL-M</td><td>predicts noise, every step</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>SD 1.5 VAE</td><td><span class="tag-oss">open</span> stable-diffusion-v1-5</td><td>84M · 167 MB fp16</td><td>CreativeML OpenRAIL-M</td><td>encode photos for training · decode latents</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>IP-Adapter-FaceID SD15</td><td><span class="tag-oss">open</span> h94/IP-Adapter-FaceID</td><td>48M · 97 MB</td><td>non-commercial</td><td>face embedding → extra cross-attention</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>FaceID companion LoRA</td><td><span class="tag-oss">open</span> h94/IP-Adapter-FaceID</td><td>26M · 51 MB</td><td>non-commercial</td><td>helps the UNet use the face tokens</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>ControlNet openpose v1.1</td><td><span class="tag-oss">open</span> lllyasviel</td><td>361M · 723 MB fp16</td><td>OpenRAIL</td><td>pose skeleton → layout residuals</td><td><span class="tag-pod">pod</span></td></tr>
+<tr><td>buffalo_l (SCRFD-10G + ArcFace R50)</td><td><span class="tag-oss">open</span> insightface</td><td>17 + 174 MB onnx</td><td>non-commercial research</td><td>primary identity score · FaceID's input embedding</td><td><span class="tag-mac">mac</span></td></tr>
+<tr><td>antelopev2 (SCRFD + ArcFace R100)</td><td><span class="tag-oss">open</span> insightface</td><td>17 + 261 MB onnx</td><td>non-commercial research</td><td>secondary (independent) identity score</td><td><span class="tag-mac">mac</span></td></tr>
+<tr><td>Face landmarker</td><td><span class="tag-oss">open</span> MediaPipe</td><td>3.8 MB</td><td>Apache 2.0</td><td>landmarks, blendshapes, head pose</td><td><span class="tag-mac">mac</span></td></tr>
+<tr><td>Selfie multiclass segmenter</td><td><span class="tag-oss">open</span> MediaPipe</td><td>16 MB</td><td>Apache 2.0</td><td>background / hair / face-skin masks</td><td><span class="tag-mac">mac</span></td></tr>
+<tr><td>CLIP ViT-L/14</td><td><span class="tag-oss">open</span> openai</td><td>428M · 1.7 GB</td><td>MIT</td><td>prompt-adherence score</td><td><span class="tag-mac">mac</span></td></tr>
+<tr><td><strong>Face LoRA</strong></td><td><span class="tag-ours">ours</span> stage 3</td><td>3.19M · 6.1 MB fp16</td><td>ours · trained on consented photos</td><td>teaches the UNet one face</td><td>trained on <span class="tag-pod">pod</span></td></tr>
+<tr><td><strong>DDPM UNet</strong></td><td><span class="tag-ours">ours</span> stage 0</td><td>6.47M · 26 MB</td><td>ours</td><td>learning diffusion on MNIST</td><td>trained on <span class="tag-pod">pod</span></td></tr>
+</tbody></table></div>
+
+<div class="callout warn">
+<span class="label">Licences matter before anything ships</span>
+<p>Everything marked non-commercial (insightface's recognizers and IP-Adapter-FaceID, which is built on
+them) is fine for this study and not fine for a product. A shipping version needs a commercially
+licensed face encoder, and would have to retrain the FaceID adapter against it.</p>
+</div>
+
+<h2 id="io">Inputs and outputs, model by model</h2>
+
+<p>Shapes are written batch × channels × height × width. "Latent" means Stable Diffusion's compressed
+image space: a 512×512 RGB picture becomes a 4×64×64 tensor, 48× fewer numbers.</p>
+
+<div class="cards">
+<div class="card"><h4>Tokenizer + text encoder</h4><p class="sub">CLIP ViT-L/14 text tower · runs once per prompt</p>
+<div class="io"><span class="k">in</span><span class="v">"corporate headshot of ohwx man…" → 77 token ids (padded)</span>
+<span class="k">out</span><span class="v">1 × 77 × 768 embedding (one 768-d vector per token)</span>
+<span class="k">called by</span><span class="v">manual_loop.encode_text(), twice: prompt and negative prompt</span></div></div>
+
+<div class="card"><h4>UNet</h4><p class="sub">860M · runs every step, twice under CFG</p>
+<div class="io"><span class="k">in</span><span class="v">noisy latent 2 × 4 × 64 × 64, timestep t, text 2 × 77 × 768</span>
+<span class="k">out</span><span class="v">predicted noise 2 × 4 × 64 × 64 → split into uncond / cond</span>
+<span class="k">called by</span><span class="v">the denoising loop in manual_loop.generate()</span></div></div>
+
+<div class="card"><h4>VAE encoder</h4><p class="sub">training only</p>
+<div class="io"><span class="k">in</span><span class="v">photo 1 × 3 × 512 × 512 in [−1, 1]</span>
+<span class="k">out</span><span class="v">a Gaussian over latents: mean and std, each 1 × 4 × 64 × 64</span>
+<span class="k">called by</span><span class="v">train_lora.py, once per photo; cached for all 2000 steps</span></div></div>
+
+<div class="card"><h4>VAE decoder</h4><p class="sub">runs once at the end</p>
+<div class="io"><span class="k">in</span><span class="v">final latent ÷ 0.18215, 1 × 4 × 64 × 64</span>
+<span class="k">out</span><span class="v">image 1 × 3 × 512 × 512 in [−1, 1] → PNG/JPEG</span>
+<span class="k">called by</span><span class="v">end of manual_loop.generate()</span></div></div>
+
+<div class="card"><h4>ArcFace (buffalo_l / antelopev2)</h4><p class="sub">face recognition · onnxruntime on the Mac</p>
+<div class="io"><span class="k">in</span><span class="v">photo → SCRFD finds the face + 5 landmarks → aligned 112 × 112 crop</span>
+<span class="k">out</span><span class="v">512-d unit vector. Same person ≈ cosine 0.6+, strangers ≈ 0.0</span>
+<span class="k">called by</span><span class="v">identity.Recognizer.embed(); faceid_embed.py for FaceID's input</span></div></div>
+
+<div class="card"><h4>IP-Adapter-FaceID</h4><p class="sub">zero-shot identity · stage 5</p>
+<div class="io"><span class="k">in</span><span class="v">ArcFace embeddings, 1 × n_photos × 1 × 512 (n = 1 or 17)</span>
+<span class="k">out</span><span class="v">4 face tokens × 768 per photo, attended by 16 extra K/V projections</span>
+<span class="k">called by</span><span class="v">UNet forward via added_cond_kwargs["image_embeds"]</span></div></div>
+
+<div class="card"><h4>ControlNet openpose</h4><p class="sub">layout · stage 5</p>
+<div class="io"><span class="k">in</span><span class="v">latent + t + text (like the UNet) and a 3 × 512 × 512 pose image in [0, 1]</span>
+<span class="k">out</span><span class="v">12 down-block residuals + 1 mid residual, added to the UNet's skips</span>
+<span class="k">called by</span><span class="v">every step, just before the UNet, in manual_loop.generate()</span></div></div>
+
+<div class="card"><h4>MediaPipe landmarker + segmenter</h4><p class="sub">compliance · CPU</p>
+<div class="io"><span class="k">in</span><span class="v">RGB image (any size); the segmenter works at 256 × 256 internally</span>
+<span class="k">out</span><span class="v">478 (x, y, z) landmarks, 52 blendshape scores, 4 × 4 head pose; a per-pixel class mask</span>
+<span class="k">called by</span><span class="v">compliance.ComplianceChecker.measure()</span></div></div>
+
+<div class="card"><h4>CLIP ViT-L/14 (scorer)</h4><p class="sub">prompt adherence · CPU</p>
+<div class="io"><span class="k">in</span><span class="v">image (resized to 224 × 224) and the prompt text</span>
+<span class="k">out</span><span class="v">two 768-d vectors → score = 100 × cosine</span>
+<span class="k">called by</span><span class="v">clip_score.ClipScorer.score()</span></div></div>
+
+<div class="card"><h4>Face LoRA (ours)</h4><p class="sub">rank 16 · lives inside the UNet</p>
+<div class="io"><span class="k">in</span><span class="v">nothing of its own: it modifies 128 attention projections</span>
+<span class="k">out</span><span class="v">W·x becomes W·x + (α/r)·B·A·x on each of them</span>
+<span class="k">called by</span><span class="v">every UNet call once loaded (pipe.load_lora_weights)</span></div></div>
+</div>
+
+<h2 id="unet">Inside the UNet: where everything plugs in</h2>
+
+<p>The UNet is where all the identity and layout work happens, so it's worth seeing its shape. It
+shrinks the 64×64 latent down to 8×8 and back up, with <strong>skip connections</strong> carrying
+detail across. At three of the four resolutions there are <strong>transformer blocks</strong>, 16 in
+total. Each transformer block has a self-attention layer (the image attending to itself) and a
+cross-attention layer (the image attending to the prompt). Those attention layers are the levers.</p>
+
+<figure>
+<svg viewBox="0 0 860 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="UNet structure with LoRA, IP-Adapter and ControlNet attachment points">
+<title>SD 1.5 UNet and its attachment points</title>
+<defs>
+<marker id="u-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker>
+<marker id="u-ag" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f0883e"/></marker>
+</defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<!-- encoder -->
+<rect x="30" y="40" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="95" y="61" font-size="11.5" fill="#dde3ec">64×64 · 320ch</text><text x="95" y="78" font-size="10" fill="#f0b429">2 transformer blocks</text>
+<rect x="80" y="120" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="145" y="141" font-size="11.5" fill="#dde3ec">32×32 · 640ch</text><text x="145" y="158" font-size="10" fill="#f0b429">2 transformer blocks</text>
+<rect x="130" y="200" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="195" y="221" font-size="11.5" fill="#dde3ec">16×16 · 1280ch</text><text x="195" y="238" font-size="10" fill="#f0b429">2 transformer blocks</text>
+<rect x="180" y="280" width="130" height="50" rx="7" fill="#10151f" stroke="#2e3a4d"/><text x="245" y="301" font-size="11.5" fill="#dde3ec">8×8 · 1280ch</text><text x="245" y="318" font-size="10" fill="#76818f">resnets only</text>
+<!-- mid -->
+<rect x="365" y="350" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="430" y="371" font-size="11.5" fill="#dde3ec">mid · 8×8</text><text x="430" y="388" font-size="10" fill="#f0b429">1 transformer block</text>
+<!-- decoder -->
+<rect x="550" y="280" width="130" height="50" rx="7" fill="#10151f" stroke="#2e3a4d"/><text x="615" y="301" font-size="11.5" fill="#dde3ec">8×8 up</text><text x="615" y="318" font-size="10" fill="#76818f">resnets only</text>
+<rect x="600" y="200" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="665" y="221" font-size="11.5" fill="#dde3ec">16×16 up</text><text x="665" y="238" font-size="10" fill="#f0b429">3 transformer blocks</text>
+<rect x="650" y="120" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="715" y="141" font-size="11.5" fill="#dde3ec">32×32 up</text><text x="715" y="158" font-size="10" fill="#f0b429">3 transformer blocks</text>
+<rect x="700" y="40" width="130" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="765" y="61" font-size="11.5" fill="#dde3ec">64×64 up</text><text x="765" y="78" font-size="10" fill="#f0b429">3 transformer blocks</text>
+<text x="95" y="28" font-size="11" fill="#93a0b4">noisy latent 4×64×64 in</text>
+<text x="765" y="28" font-size="11" fill="#93a0b4">predicted noise 4×64×64 out</text>
+</g>
+<path d="M120 90 L145 118" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M170 170 L195 198" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M220 250 L245 278" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M300 330 L363 368" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/>
+<path d="M497 368 L560 332" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M630 280 L655 252" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M680 200 L705 172" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/><path d="M730 120 L755 92" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#u-ar)"/>
+<path d="M160 60 H698" stroke="#2e3a4d" stroke-width="1.2" stroke-dasharray="5 4" fill="none" marker-end="url(#u-ar)"/><path d="M210 145 H648" stroke="#2e3a4d" stroke-width="1.2" stroke-dasharray="5 4" fill="none" marker-end="url(#u-ar)"/><path d="M260 225 H598" stroke="#2e3a4d" stroke-width="1.2" stroke-dasharray="5 4" fill="none" marker-end="url(#u-ar)"/><path d="M310 305 H548" stroke="#2e3a4d" stroke-width="1.2" stroke-dasharray="5 4" fill="none" marker-end="url(#u-ar)"/>
+<text x="430" y="54" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#76818f" text-anchor="middle">skip connections carry encoder detail to the decoder</text>
+<!-- controlnet -->
+<rect x="340" y="92" width="180" height="60" rx="7" fill="#161d29" stroke="#f0883e" stroke-width="1.5"/>
+<text x="430" y="114" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0883e" text-anchor="middle">ControlNet</text>
+<text x="430" y="131" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#93a0b4" text-anchor="middle">copy of encoder + mid,</text>
+<text x="430" y="145" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#93a0b4" text-anchor="middle">reads the pose image</text>
+<path d="M430 152 V 220 M430 152 V 300" stroke="#f0883e" stroke-width="1.3" stroke-dasharray="3 3" fill="none"/>
+<text x="436" y="190" font-family="ui-monospace,Menlo,monospace" font-size="9.5" fill="#f0883e">+ residuals</text>
+<text x="436" y="203" font-family="ui-monospace,Menlo,monospace" font-size="9.5" fill="#f0883e">into every skip</text>
+</svg>
+<figcaption>16 transformer blocks at three resolutions + mid. ControlNet (orange) adds its outputs to the skip connections.</figcaption>
+</figure>
+
+<p>Zoom into one of those 16 transformer blocks and you can see where the two identity methods
+differ. Both work through attention, but at different points and with different inputs.</p>
+
+<figure>
+<svg viewBox="0 0 860 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="One transformer block with LoRA and IP-Adapter-FaceID attachment">
+<title>One transformer block: where LoRA and FaceID act</title>
+<defs><marker id="t-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="130" width="120" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="80" y="152" font-size="11.5" fill="#dde3ec">image tokens</text><text x="80" y="168" font-size="10" fill="#76818f">e.g. 4096 × 320</text>
+<rect x="180" y="118" width="170" height="74" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="265" y="140" font-size="11.5" fill="#7aa2d8">self-attention</text><text x="265" y="157" font-size="10" fill="#93a0b4">Q, K, V from the image</text><text x="265" y="176" font-size="10" fill="#f0b429">LoRA on q, k, v, out</text>
+<rect x="390" y="118" width="190" height="74" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/><text x="485" y="140" font-size="11.5" fill="#7aa2d8">cross-attention</text><text x="485" y="157" font-size="10" fill="#93a0b4">Q image · K, V from text</text><text x="485" y="176" font-size="10" fill="#f0b429">LoRA on q, k, v, out</text>
+<rect x="620" y="130" width="100" height="50" rx="7" fill="#10151f" stroke="#2e3a4d"/><text x="670" y="160" font-size="11.5" fill="#dde3ec">feed-fwd</text>
+<rect x="750" y="130" width="90" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="795" y="160" font-size="11.5" fill="#dde3ec">out</text>
+<rect x="390" y="30" width="190" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="485" y="51" font-size="11" fill="#dde3ec">text: 77 × 768</text><text x="485" y="67" font-size="10" fill="#76818f">from the text encoder</text>
+<rect x="390" y="240" width="190" height="70" rx="7" fill="#10151f" stroke="#f0883e" stroke-width="1.5"/><text x="485" y="261" font-size="11.5" fill="#f0883e">FaceID: 2nd attention</text><text x="485" y="278" font-size="10" fill="#93a0b4">same Q · own K_ip, V_ip</text><text x="485" y="294" font-size="10" fill="#93a0b4">over 4 face tokens</text>
+<rect x="160" y="250" width="190" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/><text x="255" y="271" font-size="11" fill="#dde3ec">ArcFace 512 → MLP</text><text x="255" y="287" font-size="10" fill="#76818f">→ 4 tokens × 768</text>
+</g>
+<path d="M140 155 H178" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/><path d="M350 155 H388" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/><path d="M580 155 H618" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/><path d="M720 155 H748" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/><path d="M485 80 V116" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/><path d="M350 275 H388" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/>
+<path d="M580 275 H600 V195" stroke="#f0883e" stroke-width="1.5" fill="none" marker-end="url(#t-ar)"/>
+<text x="700" y="232" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#f0883e" text-anchor="middle">added: text-attn + s × face-attn</text>
+</svg>
+<figcaption>LoRA (gold) edits existing projections. FaceID (orange) adds a parallel attention over face tokens: "decoupled" cross-attention.</figcaption>
+</figure>
+
+<div class="grid2">
+<div class="card"><h4>LoRA: change the weights, a little</h4>
+<p>Each of the 128 projections (16 blocks × 2 attentions × q/k/v/out) gets a low-rank
+update B·A. Rank 16 on a 320×320 projection is 10,240 new numbers instead of 102,400.
+Trained per person, so it holds <em>this</em> face very specifically, and it can be folded into W
+afterwards so it costs nothing at inference.</p></div>
+<div class="card"><h4>FaceID: add a second thing to look at</h4>
+<p>No weights change per person. A face-recognition embedding is turned into 4 tokens, and each
+cross-attention gets its own K/V projections for them. The result is summed with the text
+attention, scaled by <code>s</code>. Trained once by its authors on many faces; works on a new face
+instantly. The 17-photo version simply provides 17 × 4 = 68 face tokens.</p></div>
+</div>
+
+<hr><div class="pagelinks"><a href="index.html"><span class="t">← Start here</span><span class="d">previous page</span></a><a href="training.html"><span class="t">Training →</span><span class="d">next page</span></a></div>
+</article></div></div>
+<footer><div class="wrap">DML · on-device headshot generator · Models</div></footer>
+</body>
+</html>

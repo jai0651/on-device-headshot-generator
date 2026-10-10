@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Generation · DML headshot generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="sitenav"><div class="wrap">
+  <a class="brand" href="index.html">DML · headshots</a>
+  <a class="pg" href="index.html">Start here</a>
+  <a class="pg" href="models.html">Models</a>
+  <a class="pg" href="training.html">Training</a>
+  <a class="pg on" href="generation.html">Generation</a>
+  <a class="pg" href="evaluation.html">Evaluation</a>
+  <a class="pg" href="infra.html">Where it runs</a>
+  <a class="pg" href="results.html">Results</a>
+  <a class="pg" href="../on-device-headshot-generator.html">Study notes ↗</a>
+</div></nav>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">DML · under the hood</p>
+    <h1>Generation</h1>
+    <p class="standfirst">What happens between a prompt and a headshot: every call in order with its tensor shapes, the four ways identity and layout get added, and why each step costs what it does.</p>
+  </div>
+</header>
+<div class="wrap"><div class="single"><article>
+
+
+<h2 id="loop">The loop, call by call</h2>
+
+<p>All generation goes through one hand-written function, <code>manual_loop.generate()</code>. Stage 1
+proved it produces <strong>pixel-identical</strong> output to the diffusers library, and stage 5
+proved the same again with FaceID and ControlNet switched on. So this is exactly what runs, not a
+simplification.</p>
+
+<figure>
+<svg viewBox="0 0 860 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sequence of calls in one generation">
+<title>One generation, call by call</title>
+<defs><marker id="g-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace">
+<text x="20" y="30" font-size="11" fill="#93a0b4">ONCE</text>
+<rect x="20" y="40" width="820" height="46" rx="7" fill="#10151f" stroke="#7aa2d8"/>
+<text x="36" y="60" font-size="11.5" fill="#7aa2d8">1 · text encoder ×2</text>
+<text x="36" y="77" font-size="10.5" fill="#93a0b4">prompt → 1×77×768 · negative prompt → 1×77×768 · stacked [uncond; cond] → 2×77×768</text>
+<rect x="20" y="94" width="820" height="46" rx="7" fill="#161d29" stroke="#2e3a4d"/>
+<text x="36" y="114" font-size="11.5" fill="#dde3ec">2 · starting noise</text>
+<text x="36" y="131" font-size="10.5" fill="#93a0b4">randn(1×4×64×64) from a seeded CPU generator × init_noise_sigma · 25 timesteps chosen by the scheduler (999 → 0)</text>
+
+<text x="20" y="166" font-size="11" fill="#f0b429">× 25 STEPS · this is ~95% of the time</text>
+<rect x="20" y="176" width="820" height="232" rx="9" fill="#0b0f17" stroke="#f0b429" stroke-dasharray="4 4"/>
+<rect x="36" y="190" width="788" height="38" rx="6" fill="#161d29" stroke="#2e3a4d"/>
+<text x="50" y="213" font-size="10.5" fill="#dde3ec">3a · duplicate latent → 2×4×64×64 (one copy per CFG branch) · scale_model_input</text>
+<rect x="36" y="236" width="788" height="46" rx="6" fill="#10151f" stroke="#f0883e"/>
+<text x="50" y="256" font-size="10.5" fill="#f0883e">3b · ControlNet (only with pose)</text>
+<text x="50" y="272" font-size="10" fill="#93a0b4">latent, t, text, pose 2×3×512×512 → 12 down residuals + 1 mid residual</text>
+<rect x="36" y="290" width="788" height="54" rx="6" fill="#10151f" stroke="#7aa2d8" stroke-width="1.4"/>
+<text x="50" y="310" font-size="10.5" fill="#7aa2d8">3c · UNet: latent 2×4×64×64, t, text 2×77×768 → noise 2×4×64×64</text>
+<text x="50" y="327" font-size="10" fill="#93a0b4">+ LoRA (inside the weights) · + FaceID face tokens via added_cond_kwargs · + ControlNet residuals</text>
+<text x="50" y="339" font-size="10" fill="#76818f">one batched call = both CFG branches</text>
+<rect x="36" y="352" width="385" height="46" rx="6" fill="#161d29" stroke="#2e3a4d"/>
+<text x="50" y="372" font-size="10.5" fill="#dde3ec">3d · CFG: n_u + 6·(n_c − n_u)</text>
+<text x="50" y="388" font-size="10" fill="#76818f">push away from "no prompt"</text>
+<rect x="439" y="352" width="385" height="46" rx="6" fill="#161d29" stroke="#2e3a4d"/>
+<text x="453" y="372" font-size="10.5" fill="#dde3ec">3e · scheduler.step (DPM++ 2M Karras)</text>
+<text x="453" y="388" font-size="10" fill="#76818f">latent at t → latent at the next t</text>
+
+<text x="20" y="432" font-size="11" fill="#93a0b4">ONCE</text>
+<rect x="20" y="442" width="820" height="46" rx="7" fill="#10151f" stroke="#7aa2d8"/>
+<text x="36" y="462" font-size="11.5" fill="#7aa2d8">4 · VAE decoder</text>
+<text x="36" y="479" font-size="10.5" fill="#93a0b4">latent ÷ 0.18215 → 1×3×512×512 in [−1, 1] → clamp → uint8 → JPEG</text>
+</g>
+<path d="M430 86 V92" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/><path d="M430 140 V174" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/><path d="M430 228 V234" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/><path d="M430 282 V288" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/><path d="M430 344 V350" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/><path d="M430 408 V440" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#g-ar)"/>
+<path d="M824 375 H840 V200 H826" stroke="#f0b429" stroke-width="1.2" stroke-dasharray="3 3" fill="none" marker-end="url(#g-ar)"/>
+<text x="846" y="290" font-family="ui-monospace,Menlo,monospace" font-size="9.5" fill="#f0b429" transform="rotate(90 846 290)">next step</text>
+</svg>
+<figcaption>25 steps × 2 CFG branches = 50 UNet evaluations per image (plus 50 ControlNet evaluations with pose).</figcaption>
+</figure>
+
+<div class="grid2">
+<div class="card"><h4>Why CFG doubles the bill</h4>
+<p>Every step runs the UNet on the prompt <em>and</em> on the negative prompt, then extrapolates:
+<code>noise = uncond + 6·(cond − uncond)</code>. It's what makes the image obey the prompt, and it's
+why 25 steps is 50 UNet calls. Distilled models (stage 8, LCM) bake guidance in and drop it to 1×.</p></div>
+<div class="card"><h4>Why latents</h4>
+<p>The loop never touches pixels. A 512×512×3 image is 786,432 numbers; its latent is 16,384, 48×
+fewer. Only the VAE decoder at the very end works at full resolution, which is why it's cheap in
+time but heavy in memory.</p></div>
+</div>
+
+<h2 id="paths">Four ways to steer the same loop</h2>
+
+<p>Identity and layout aren't separate pipelines. They're optional extra inputs to the same UNet call
+(3c above), which is why they can be combined.</p>
+
+<figure>
+<svg viewBox="0 0 860 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Four ways to condition the UNet">
+<title>What each method adds to the UNet call</title>
+<defs><marker id="c-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="320" y="120" width="220" height="90" rx="10" fill="#161d29" stroke="#7aa2d8" stroke-width="1.6"/>
+<text x="430" y="152" font-size="13" fill="#7aa2d8">UNet call</text>
+<text x="430" y="172" font-size="10.5" fill="#93a0b4">latent · t · text</text>
+<text x="430" y="190" font-size="10" fill="#76818f">(the base: a stranger)</text>
+<rect x="20" y="30" width="250" height="80" rx="8" fill="#10151f" stroke="#f0b429"/>
+<text x="145" y="54" font-size="12" fill="#f0b429">+ face LoRA</text>
+<text x="145" y="72" font-size="10" fill="#93a0b4">changes the weights themselves</text>
+<text x="145" y="88" font-size="10" fill="#93a0b4">prompt says "ohwx man"</text>
+<text x="145" y="102" font-size="10" fill="#76818f">needs per-person training</text>
+<rect x="590" y="30" width="250" height="80" rx="8" fill="#10151f" stroke="#f0883e"/>
+<text x="715" y="54" font-size="12" fill="#f0883e">+ FaceID</text>
+<text x="715" y="72" font-size="10" fill="#93a0b4">face tokens → extra attention</text>
+<text x="715" y="88" font-size="10" fill="#93a0b4">prompt says "a man"</text>
+<text x="715" y="102" font-size="10" fill="#76818f">zero training · 1 photo works</text>
+<rect x="20" y="220" width="250" height="80" rx="8" fill="#10151f" stroke="#5ec27e"/>
+<text x="145" y="244" font-size="12" fill="#5ec27e">+ ControlNet pose</text>
+<text x="145" y="262" font-size="10" fill="#93a0b4">skeleton → residuals</text>
+<text x="145" y="278" font-size="10" fill="#93a0b4">decides where, not who</text>
+<text x="145" y="292" font-size="10" fill="#76818f">passport framing</text>
+<rect x="590" y="220" width="250" height="80" rx="8" fill="#10151f" stroke="#2e3a4d"/>
+<text x="715" y="244" font-size="12" fill="#dde3ec">combinations</text>
+<text x="715" y="262" font-size="10" fill="#93a0b4">LoRA + FaceID (stacked)</text>
+<text x="715" y="278" font-size="10" fill="#93a0b4">FaceID + pose · LoRA + pose</text>
+<text x="715" y="292" font-size="10" fill="#76818f">all measured in stage 5</text>
+</g>
+<path d="M270 90 L318 130" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#c-ar)"/><path d="M590 90 L542 130" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#c-ar)"/><path d="M270 240 L318 200" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#c-ar)"/><path d="M590 240 L542 200" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#c-ar)"/>
+</svg>
+<figcaption>Identity from weights (LoRA) or from attention (FaceID); layout from ControlNet. Orthogonal axes, so they stack.</figcaption>
+</figure>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Method (stage 5 name)</th><th>Face LoRA</th><th>FaceID input</th><th>FaceID scale</th><th>Pose</th><th>Prompt subject</th></tr></thead>
+<tbody>
+<tr><td><code>base</code></td><td>—</td><td>—</td><td>—</td><td>—</td><td>"a man"</td></tr>
+<tr><td><code>lora</code></td><td>1.0</td><td>—</td><td>—</td><td>—</td><td>"ohwx man"</td></tr>
+<tr><td><code>faceid_1photo</code></td><td>—</td><td>1 selfie (the sharpest frontal one)</td><td>1.0</td><td>—</td><td>"a man"</td></tr>
+<tr><td><code>faceid_17photos</code></td><td>—</td><td>all 17 embeddings → 68 tokens</td><td>1.0</td><td>—</td><td>"a man"</td></tr>
+<tr><td><code>faceid_17photos_s0.6</code></td><td>—</td><td>all 17</td><td>0.6</td><td>—</td><td>"a man"</td></tr>
+<tr><td><code>lora+faceid</code></td><td>1.0</td><td>all 17</td><td>0.6</td><td>—</td><td>"ohwx man"</td></tr>
+<tr><td><code>*_pose</code></td><td colspan="4">same as above + the passport skeleton, on the two headshot prompts</td><td></td></tr>
+</tbody></table></div>
+
+<h2 id="pose">The pose template</h2>
+
+<p>Rather than copy a pose from some photo, the skeleton is placed where the compliance checks want a
+head: eye line 62% up from the bottom, head about 60% of the frame height, centred, shoulders level.
+It's drawn in the exact OpenPose colour format the ControlNet was trained on.</p>
+
+<div class="grid2">
+<div><img class="shot" style="background:#000" src="../lora_data/control/passport_pose.png" alt="passport pose skeleton"><p class="shotcap">The control image: 18 COCO keypoints, only the head and shoulders present.</p></div>
+<div><img class="shot" src="../runs/stage5_smoke/val_controlnet_mine.jpg" alt="ControlNet output"><p class="shotcap">What it produces (8-step validation run): whole head in frame, centred, square to camera.</p></div>
+</div>
+
+<h2 id="knobs">The knobs, and what they did</h2>
+
+<p>Stage 1 swept guidance strength and samplers on one seed. The CFG sweep is what set 6.0 as the
+project's default: below ~4 the prompt is ignored, above ~10 skin turns to wax.</p>
+<img class="shot" src="../outputs/stage1/sweep_cfg.jpg" alt="CFG sweep grid">
+<p class="shotcap">Guidance 1 → 15, two seeds. Same noise in every column; only the guidance changes.</p>
+<img class="shot" src="../outputs/stage1/sweep_sampler.jpg" alt="Sampler sweep grid">
+<p class="shotcap">Six samplers × 10 / 20 / 30 steps. DPM++ 2M Karras is clean by 20, so 25 is the project default.</p>
+
+<h2 id="edit">Next: the edit path (planned, stage 5c)</h2>
+
+<p>Everything above <em>generates</em> a face. The edit path keeps the real one: segment face and
+hair from the selfie, inpaint everything else with SD 1.5's inpainting UNet plus pose control, then a
+low-strength img2img pass (0.2–0.35) over the whole image to match the lighting. Identity is then
+preserved by construction, and low strength means only a fraction of the 25 steps run.</p>
+
+<hr><div class="pagelinks"><a href="training.html"><span class="t">← Training</span><span class="d">previous page</span></a><a href="evaluation.html"><span class="t">Evaluation →</span><span class="d">next page</span></a></div>
+</article></div></div>
+<footer><div class="wrap">DML · on-device headshot generator · Generation</div></footer>
+</body>
+</html>

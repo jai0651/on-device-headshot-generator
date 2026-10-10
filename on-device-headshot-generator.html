@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>On-device headshot generator — what I need to understand first</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --primary:#0b0f17; --surface:#10151f; --surface-2:#161d29; --surface-3:#1d2534;
+  --deep:#070a11; --line:#212a39; --line-2:#2e3a4d;
+  --ink:#dde3ec; --muted:#93a0b4; --faint:#76818f; --ghost:#4d586a;
+  --accent:#f0b429; --accent-hover:#f7c95c; --accent-dim:#d99e2b; --accent-2:#f7d070;
+  --amber:#f0883e; --green:#5ec27e; --blue:#7aa2d8;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --e1:0 1px 2px rgba(0,0,0,.3),0 2px 8px -2px rgba(0,0,0,.35);
+  --e2:0 2px 4px rgba(0,0,0,.3),0 12px 28px -8px rgba(0,0,0,.55);
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;scroll-padding-top:24px;}
+body{
+  margin:0;background:var(--primary);color:rgba(221,227,236,.87);
+  font-family:var(--sans);font-size:17px;line-height:1.75;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── Layout ─────────────────────────────────────────── */
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px;}
+.grid{display:grid;grid-template-columns:1fr;gap:48px;}
+@media(min-width:1080px){
+  .grid{grid-template-columns:232px minmax(0,1fr);gap:56px;align-items:start;}
+}
+
+/* ── Header ─────────────────────────────────────────── */
+header.hero{
+  border-bottom:1px solid var(--line);
+  background:
+    radial-gradient(900px 340px at 12% -20%,rgba(240,180,41,.11),transparent 62%),
+    linear-gradient(180deg,var(--deep),var(--primary));
+  padding:68px 0 44px;margin-bottom:52px;
+}
+.eyebrow{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--accent-dim);margin:0 0 18px;display:flex;align-items:center;gap:10px;
+}
+.eyebrow::before{content:"";width:26px;height:1px;background:var(--accent-dim);display:block;}
+h1{
+  font-family:var(--mono);font-size:clamp(28px,4.6vw,44px);line-height:1.16;
+  letter-spacing:-.03em;color:var(--ink);font-weight:700;margin:0 0 20px;max-width:20ch;
+}
+.standfirst{font-size:18.5px;color:var(--muted);max-width:66ch;margin:0 0 26px;line-height:1.65;}
+.metarow{display:flex;flex-wrap:wrap;gap:8px;}
+.pill{
+  font-family:var(--mono);font-size:12px;color:var(--muted);
+  border:1px solid var(--line);background:var(--surface-2);
+  padding:4px 11px;border-radius:999px;
+}
+.pill.hot{color:var(--accent);border-color:rgba(240,180,41,.32);background:rgba(240,180,41,.07);}
+
+/* ── TOC ────────────────────────────────────────────── */
+nav.toc{display:none;}
+@media(min-width:1080px){
+  nav.toc{display:block;position:sticky;top:28px;max-height:calc(100vh - 56px);overflow-y:auto;}
+}
+.toc-title{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.17em;text-transform:uppercase;
+  color:var(--ghost);margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line);
+}
+.toc a{
+  display:block;font-size:13.5px;line-height:1.45;color:var(--faint);text-decoration:none;
+  padding:6px 0 6px 13px;border-left:2px solid var(--line);transition:.16s;
+}
+.toc a:hover{color:var(--ink);border-left-color:var(--line-2);}
+.toc a.on{color:var(--accent);border-left-color:var(--accent);}
+.toc a .n{font-family:var(--mono);font-size:11px;color:var(--ghost);margin-right:7px;}
+.toc a.on .n{color:var(--accent-dim);}
+
+/* ── Prose ──────────────────────────────────────────── */
+article{padding-bottom:110px;}
+article > p, article > ul, article > ol, article > blockquote{max-width:70ch;}
+h2{
+  font-family:var(--mono);font-size:26px;font-weight:700;letter-spacing:-.022em;color:var(--ink);
+  margin:66px 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line);scroll-margin-top:24px;
+}
+h2 .num{font-size:17px;color:var(--accent);margin-right:11px;font-weight:600;}
+h3{font-family:var(--mono);font-size:18.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink);margin:38px 0 10px;}
+h4{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--accent-2);margin:26px 0 7px;}
+p{margin:15px 0;}
+ul,ol{margin:15px 0;padding-left:24px;}
+li{margin:7px 0;}
+li::marker{color:var(--accent-dim);}
+strong{color:var(--ink);font-weight:600;}
+em{color:rgba(221,227,236,.9);}
+a{color:var(--accent);text-decoration:underline;text-decoration-color:rgba(240,180,41,.3);text-underline-offset:4px;transition:.16s;}
+a:hover{text-decoration-color:var(--accent);}
+hr{border:0;border-top:1px solid var(--line);margin:44px 0;}
+code{
+  font-family:var(--mono);font-size:.86em;color:var(--accent-2);
+  background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:2px 6px;
+}
+pre{
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;
+  padding:17px 19px;overflow-x:auto;font-family:var(--mono);font-size:13.5px;line-height:1.62;
+  color:rgba(221,227,236,.9);box-shadow:var(--e1);margin:20px 0;
+}
+pre code{background:none;border:0;padding:0;color:inherit;font-size:inherit;}
+pre .c{color:var(--faint);}
+pre .k{color:var(--accent);}
+pre .s{color:var(--green);}
+
+/* ── Blocks ─────────────────────────────────────────── */
+.callout{
+  margin:22px 0;padding:15px 20px;border-left:3px solid var(--accent);
+  background:rgba(22,29,41,.8);border-radius:0 10px 10px 0;
+}
+.callout .label{
+  display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:5px;
+}
+.callout p:first-of-type{margin-top:0;}
+.callout p:last-child{margin-bottom:0;}
+.callout.warn{border-left-color:var(--amber);}
+.callout.warn .label{color:var(--amber);}
+.callout.good{border-left-color:var(--green);}
+.callout.good .label{color:var(--green);}
+.callout.key{border-left-color:var(--blue);}
+.callout.key .label{color:var(--blue);}
+
+.card{
+  margin:20px 0;padding:19px 22px;border:1px solid var(--line);
+  background:rgba(16,21,31,.72);border-radius:10px;box-shadow:var(--e1);
+}
+.card h3,.card h4{margin-top:0;}
+.grid2{display:grid;grid-template-columns:1fr;gap:15px;margin:20px 0;}
+@media(min-width:760px){.grid2{grid-template-columns:1fr 1fr;}}
+
+/* ── Tables ─────────────────────────────────────────── */
+.tablewrap{margin:22px 0;overflow-x:auto;border:1px solid var(--line);border-radius:10px;}
+table{width:100%;border-collapse:collapse;font-size:14.5px;}
+th,td{border-bottom:1px solid var(--line);padding:10px 13px;text-align:left;vertical-align:top;}
+th{
+  background:rgba(22,29,41,.6);font-family:var(--mono);font-size:11.5px;font-weight:600;
+  text-transform:uppercase;letter-spacing:.06em;color:var(--faint);white-space:nowrap;
+}
+tbody tr:last-child td{border-bottom:0;}
+tbody tr:hover td{background:rgba(240,180,41,.035);}
+td code{font-size:12.5px;}
+
+/* ── Figures ────────────────────────────────────────── */
+figure{margin:30px 0;}
+figure svg{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);box-shadow:var(--e1);}
+figcaption{margin-top:10px;text-align:center;font-size:13px;color:var(--faint);}
+
+/* ── Reading list ───────────────────────────────────── */
+.reads{display:grid;grid-template-columns:1fr;gap:11px;margin:20px 0;}
+.read{
+  display:block;padding:14px 17px;border:1px solid var(--line);border-radius:9px;
+  background:rgba(16,21,31,.6);text-decoration:none;transition:.17s;
+}
+.read:hover{border-color:rgba(240,180,41,.4);background:rgba(22,29,41,.85);transform:translateX(3px);}
+.read .rt{display:flex;align-items:center;gap:9px;margin-bottom:4px;flex-wrap:wrap;}
+.read .tag{
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.11em;text-transform:uppercase;
+  padding:2.5px 7px;border-radius:4px;border:1px solid;
+}
+.tag.paper{color:var(--blue);border-color:rgba(122,162,216,.35);background:rgba(122,162,216,.08);}
+.tag.post{color:var(--accent);border-color:rgba(240,180,41,.3);background:rgba(240,180,41,.07);}
+.tag.code{color:var(--green);border-color:rgba(94,194,126,.3);background:rgba(94,194,126,.07);}
+.tag.docs{color:var(--amber);border-color:rgba(240,136,62,.3);background:rgba(240,136,62,.07);}
+.tag.video{color:#c58ee0;border-color:rgba(197,142,224,.3);background:rgba(197,142,224,.08);}
+.read .rn{color:var(--ink);font-weight:600;font-size:15px;font-family:var(--mono);letter-spacing:-.01em;}
+.read .rd{color:var(--faint);font-size:13.5px;line-height:1.5;}
+.read .must{color:var(--accent);font-family:var(--mono);font-size:10px;letter-spacing:.1em;}
+
+/* ── Steps ──────────────────────────────────────────── */
+.step{position:relative;padding-left:50px;margin:26px 0;}
+.step .sn{
+  position:absolute;left:0;top:1px;width:34px;height:34px;border-radius:9px;
+  border:1px solid rgba(240,180,41,.35);background:rgba(240,180,41,.08);
+  font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+}
+.step h3{margin:3px 0 6px;}
+.step .dur{font-family:var(--mono);font-size:11.5px;color:var(--ghost);letter-spacing:.05em;}
+
+.kpi{display:flex;flex-wrap:wrap;gap:12px;margin:22px 0;}
+.kpi .box{
+  min-width:136px;flex:1;padding:13px 17px;border:1px solid var(--line);
+  background:rgba(16,21,31,.72);border-radius:10px;box-shadow:var(--e1);
+}
+.kpi .v{display:block;font-family:var(--mono);font-size:21px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums;}
+.kpi .k{font-size:12.5px;color:var(--faint);line-height:1.35;}
+
+footer{border-top:1px solid var(--line);padding:30px 0 50px;color:var(--ghost);font-family:var(--mono);font-size:12.5px;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">DML · build notes</p>
+    <p style="font-family:var(--mono);font-size:13px;margin:0 0 18px"><a href="docs/index.html">→ How it's built, under the hood: models, training, generation, evaluation, infrastructure, results</a></p>
+    <h1>An on-device headshot generator</h1>
+    <p class="standfirst">Everything I need to understand before I write a line of it — how diffusion
+    models actually produce a picture, the four different ways to teach one a specific face, how to tell
+    whether it worked, and what has to happen to a 2&nbsp;GB model before it runs on a phone.</p>
+    <div class="metarow">
+      <span class="pill hot">Stable Diffusion 1.5</span>
+      <span class="pill">LoRA</span>
+      <span class="pill">IP-Adapter</span>
+      <span class="pill">ControlNet</span>
+      <span class="pill">Core ML · ANE</span>
+      <span class="pill">INT8 / palettization</span>
+      <span class="pill">step distillation</span>
+      <span class="pill">RunPod</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+<div class="grid">
+
+<nav class="toc">
+  <p class="toc-title">Contents</p>
+  <a href="#sys"><span class="n">◆</span>System design</a>
+  <a href="#status"><span class="n">◆</span>Build status</a>
+  <a href="#s0"><span class="n">00</span>The one hard problem</a>
+  <a href="#s1"><span class="n">01</span>How diffusion makes a picture</a>
+  <a href="#s2"><span class="n">02</span>Four ways to teach it my face</a>
+  <a href="#s3"><span class="n">03</span>Making it actually good</a>
+  <a href="#s4"><span class="n">04</span>How I know it worked</a>
+  <a href="#s5"><span class="n">05</span>Getting it onto the phone</a>
+  <a href="#s6"><span class="n">06</span>Making it fast enough</a>
+  <a href="#s7"><span class="n">07</span>The order to learn this in</a>
+  <a href="#s8"><span class="n">08</span>Reading list</a>
+  <a href="#s9"><span class="n">09</span>Open questions</a>
+  <a href="#s10"><span class="n">10</span>Extensions — going further</a>
+</nav>
+
+<article>
+
+<h2 id="sys"><span class="num">◆</span>System design — what I'm building and how it works</h2>
+
+<p>The rest of this document is the theory, one mechanism at a time. This section is the whole
+machine: what the product does, which problems it exists to solve, and how a selfie turns into a
+headshot without the photo ever leaving the phone.</p>
+
+<h3>What it does</h3>
+
+<p>You take a selfie, or pick one or more photos from your library. A few seconds later you get
+professional headshots: a clean studio backdrop, a blazer instead of a hoodie, soft even lighting,
+correct head-and-shoulders framing. The face has to be recognisably you. Everything runs on the
+iPhone, and nothing is uploaded.</p>
+
+<h3>The problems it solves</h3>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Problem</th><th>How today's AI headshot apps handle it</th><th>How this design handles it</th></tr></thead>
+<tbody>
+<tr><td><strong>Privacy</strong></td><td>Upload 10–20 selfies to a server, which holds biometric face data</td><td>Every model that touches the face runs on the device. Nothing is uploaded</td></tr>
+<tr><td><strong>Cost per user</strong></td><td>A GPU trains a model for every customer</td><td>No per-user training. GPU spend is build-time only, a few cents per experiment</td></tr>
+<tr><td><strong>Waiting</strong></td><td>30–60+ minutes of training before the first image</td><td>Seconds. Zero-shot identity plus 4–8 step distilled sampling</td></tr>
+<tr><td><strong>"It looks like my cousin"</strong></td><td>Depends on how well the per-user model trained</td><td>The edit path keeps your real face pixels. The generate path conditions on a face-recognition embedding. An identity guard rejects weak results</td></tr>
+<tr><td><strong>Framing and compliance</strong></td><td>Prompt and hope</td><td>ControlNet sets the layout, and a compliance checker measures head ratio, eye line, background and sharpness</td></tr>
+<tr><td><strong>Fitting on a phone</strong></td><td>Not attempted</td><td>Palettized Core ML, UNet resident on the ANE, 512 then upscale, precomputed prompt embeddings</td></tr>
+</tbody></table></div>
+
+<h3>Two halves: build time and run time</h3>
+
+<p>The system splits cleanly in two. <strong>Build time</strong> happens on rented cloud GPUs. It's
+where models are chosen, distilled, converted, quantized and measured, and it never sees a user's
+photo. Its only output is a model bundle. <strong>Run time</strong> happens on the user's phone,
+offline, using that bundle.</p>
+
+<figure>
+<svg viewBox="0 0 860 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="System overview: build time on cloud GPUs produces a model bundle used at run time on the phone">
+<title>System overview: build time on cloud GPUs, run time on the phone</title>
+<defs>
+<marker id="sy-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker>
+<marker id="sy-ag" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f0b429"/></marker>
+</defs>
+<rect x="16" y="16" width="300" height="308" rx="10" fill="#0b0f17" stroke="#2e3a4d" stroke-dasharray="4 4"/>
+<text x="32" y="40" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#d99e2b">BUILD TIME · RunPod GPU</text>
+<text x="32" y="58" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f">never sees a user's photo</text>
+<rect x="32" y="78" width="268" height="34" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="166" y="99" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">SD 1.5 base + inpainting</text>
+<rect x="32" y="122" width="268" height="34" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="166" y="143" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">FaceID adapter · ControlNet</text>
+<rect x="32" y="166" width="268" height="34" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="166" y="187" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">LCM-LoRA · 4–8 steps · CFG 1</text>
+<rect x="32" y="210" width="268" height="34" rx="7" fill="#10151f" stroke="#f0883e" stroke-width="1.3"/>
+<text x="166" y="231" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">Core ML · palettize 8/6/4-bit</text>
+<rect x="32" y="254" width="268" height="34" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.3"/>
+<text x="166" y="275" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#dde3ec" text-anchor="middle">eval: identity · prompt · compliance</text>
+<path d="M166 112 V122" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M166 156 V166" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M166 200 V210" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M166 244 V254" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/>
+<path d="M32 271 H24 V95 H30" stroke="#5ec27e" stroke-width="1.3" fill="none" stroke-dasharray="3 3" marker-end="url(#sy-ar)"/>
+<text x="166" y="310" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#76818f" text-anchor="middle">measure → change one thing → repeat</text>
+
+<rect x="338" y="155" width="180" height="56" rx="8" fill="#161d29" stroke="#f0b429" stroke-width="1.6"/>
+<text x="428" y="175" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#f0b429" text-anchor="middle">MODEL BUNDLE</text>
+<text x="428" y="191" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#93a0b4" text-anchor="middle">Core ML · ~1 GB</text>
+<text x="428" y="205" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#76818f" text-anchor="middle">downloaded once</text>
+<path d="M300 227 H318 V183 H336" stroke="#f0b429" stroke-width="1.5" fill="none" marker-end="url(#sy-ag)"/>
+
+
+<rect x="540" y="16" width="304" height="308" rx="10" fill="#0b0f17" stroke="#2e3a4d" stroke-dasharray="4 4"/>
+<text x="556" y="40" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#d99e2b">RUN TIME · the user's iPhone</text>
+<text x="556" y="58" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f">offline · no upload · no training</text>
+<rect x="556" y="78" width="272" height="34" rx="7" fill="#161d29" stroke="#2e3a4d"/>
+<text x="692" y="99" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">selfie · camera or library</text>
+<rect x="556" y="122" width="272" height="34" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="692" y="143" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">face analysis · quality gate</text>
+<rect x="556" y="166" width="272" height="34" rx="7" fill="#10151f" stroke="#f0b429" stroke-width="1.5"/>
+<text x="692" y="187" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0b429" text-anchor="middle">diffusion · edit or generate</text>
+<rect x="556" y="210" width="272" height="34" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="692" y="231" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#dde3ec" text-anchor="middle">identity guard · compliance</text>
+<rect x="556" y="254" width="272" height="34" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/>
+<text x="692" y="275" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#5ec27e" text-anchor="middle">headshot · upscaled</text>
+<path d="M692 112 V122" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M692 156 V166" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M692 200 V210" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/><path d="M692 244 V254" stroke="#4d586a" stroke-width="1.5" marker-end="url(#sy-ar)"/>
+<path d="M518 183 H554" stroke="#f0b429" stroke-width="1.5" fill="none" marker-end="url(#sy-ag)"/>
+<text x="692" y="310" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#5ec27e" text-anchor="middle">the photo never leaves the phone</text>
+</svg>
+<figcaption>Build time makes and measures the models, and ships a bundle. Run time only uses it.</figcaption>
+</figure>
+
+<h3>What happens on the phone, step by step</h3>
+
+<figure>
+<svg viewBox="0 0 860 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="On-device runtime flow with an edit path and a generate path">
+<title>On-device runtime flow: analysis, two diffusion paths, decode, identity guard</title>
+<defs>
+<marker id="rt-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker>
+<marker id="rt-aa" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f0883e"/></marker>
+</defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="20" width="150" height="50" rx="7" fill="#161d29" stroke="#2e3a4d"/>
+<text x="95" y="41" font-size="12" fill="#dde3ec">selfie</text>
+<text x="95" y="58" font-size="10.5" fill="#76818f">1–3 photos</text>
+<rect x="200" y="20" width="230" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="315" y="41" font-size="12" fill="#7aa2d8">quality gate</text>
+<text x="315" y="58" font-size="10.5" fill="#76818f">one face · sharp · eyes open</text>
+<rect x="460" y="20" width="380" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="650" y="41" font-size="12" fill="#7aa2d8">face analysis · runs once</text>
+<text x="650" y="58" font-size="10.5" fill="#76818f">landmarks · face+hair mask · face embedding</text>
+</g>
+<path d="M170 45 H198" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/><path d="M430 45 H458" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/>
+<path d="M650 70 V100 H145 V130" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#rt-ar)"/>
+<path d="M145 100 H8 V257 H18" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#rt-ar)"/>
+
+<g font-family="ui-monospace,Menlo,monospace">
+<text x="160" y="124" font-size="11" fill="#5ec27e">A · EDIT (default): identity kept by construction</text>
+<text x="160" y="224" font-size="11" fill="#f0883e">B · GENERATE: new angle or style</text>
+</g>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="132" width="250" height="50" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.3"/>
+<text x="145" y="153" font-size="12" fill="#dde3ec">keep real face + hair</text>
+<text x="145" y="170" font-size="10.5" fill="#76818f">pixels untouched, from the mask</text>
+<rect x="300" y="132" width="280" height="50" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.3"/>
+<text x="440" y="153" font-size="12" fill="#dde3ec">inpaint scene + clothes</text>
+<text x="440" y="170" font-size="10.5" fill="#76818f">SD 1.5 inpaint + ControlNet</text>
+<rect x="610" y="132" width="230" height="50" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.3"/>
+<text x="725" y="153" font-size="12" fill="#dde3ec">harmonize lighting</text>
+<text x="725" y="170" font-size="10.5" fill="#76818f">img2img · strength 0.2–0.35</text>
+
+<rect x="20" y="232" width="250" height="50" rx="7" fill="#10151f" stroke="#f0883e" stroke-width="1.3"/>
+<text x="145" y="253" font-size="12" fill="#dde3ec">style preset</text>
+<text x="145" y="270" font-size="10.5" fill="#76818f">prompt embedding, precomputed</text>
+<rect x="300" y="232" width="280" height="50" rx="7" fill="#10151f" stroke="#f0883e" stroke-width="1.3"/>
+<text x="440" y="253" font-size="12" fill="#dde3ec">FaceID adapter + ControlNet</text>
+<text x="440" y="270" font-size="10.5" fill="#76818f">who (embedding) · where (layout)</text>
+<rect x="610" y="232" width="230" height="50" rx="7" fill="#10151f" stroke="#f0883e" stroke-width="1.3"/>
+<text x="725" y="253" font-size="12" fill="#dde3ec">LCM denoise</text>
+<text x="725" y="270" font-size="10.5" fill="#76818f">4–8 steps · CFG 1 · ANE</text>
+
+<rect x="610" y="330" width="230" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="725" y="351" font-size="12" fill="#dde3ec">VAE decode · GPU</text>
+<text x="725" y="368" font-size="10.5" fill="#76818f">64×64×4 → 512×512×3</text>
+<rect x="300" y="330" width="280" height="50" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="440" y="351" font-size="12" fill="#dde3ec">identity guard + compliance</text>
+<text x="440" y="368" font-size="10.5" fill="#76818f">2nd recognizer · ICAO-style checks</text>
+<rect x="20" y="330" width="250" height="50" rx="7" fill="#161d29" stroke="#5ec27e" stroke-width="1.5"/>
+<text x="145" y="351" font-size="12" fill="#5ec27e">headshot → gallery</text>
+<text x="145" y="368" font-size="10.5" fill="#76818f">upscaled 2× · scores attached</text>
+</g>
+<path d="M270 157 H298" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/><path d="M580 157 H608" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/><path d="M270 257 H298" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/><path d="M580 257 H608" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/>
+<path d="M840 157 H852 V355 H842" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#rt-ar)"/>
+<path d="M725 282 V328" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/>
+<path d="M610 355 H582" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/><path d="M300 355 H272" stroke="#4d586a" stroke-width="1.5" marker-end="url(#rt-ar)"/>
+<path d="M440 330 V286" stroke="#f0883e" stroke-width="1.3" stroke-dasharray="3 3" marker-end="url(#rt-aa)"/>
+<text x="450" y="312" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#f0883e">fail → new seed, or fall back to A</text>
+</svg>
+<figcaption>Analysis runs once. Path A edits the real photo, path B generates a new one. Every result is checked before you see it.</figcaption>
+</figure>
+
+<ol>
+<li><strong>Quality gate.</strong> Reject bad input before spending any compute: exactly one face,
+sharp enough (variance of the Laplacian), eyes open, not heavily backlit. A bad selfie can only
+produce a bad headshot, so this is the cheapest quality win in the system.</li>
+<li><strong>Face analysis, once.</strong> Landmarks (for framing and compliance), a face-and-hair mask
+(for the edit path), and a face-recognition embedding (for the generate path and the identity
+guard). These are small models, and Apple's Vision framework covers most of it.</li>
+<li><strong>Path A · Edit (the default).</strong> The face and hair pixels are kept as they are.
+Everything else (backdrop, clothes, shoulders) is inpainted, with ControlNet holding the framing.
+A low-strength img2img pass over the whole image then matches the lighting on the face to the new
+scene. Identity is preserved by construction, and low strength runs only a fraction of the
+denoising steps.</li>
+<li><strong>Path B · Generate.</strong> For a new angle, expression or style. A style preset supplies
+the prompt, FaceID supplies <em>who</em>, ControlNet supplies <em>where</em>, and a 4–8 step LCM
+sampler at CFG 1 does the denoising, with the UNet on the Neural Engine.</li>
+<li><strong>Decode and upscale.</strong> The VAE decoder turns the latent into 512² pixels (probably
+on the GPU, which section 05 says to measure), then a small upscaler doubles it.</li>
+<li><strong>Identity guard and compliance.</strong> Score the result against the input with a
+<em>different</em> face recognizer from the one path B conditioned on, so the check isn't circular.
+Run the compliance checks from section 04. Below threshold: a new seed, or fall back to path A. The
+user never sees the failures.</li>
+</ol>
+
+<div class="callout key">
+<span class="label">A cheap win hiding in the design</span>
+<p>The prompts are fixed style presets ("studio grey, navy blazer", "outdoor, soft daylight"), not
+free text. So their 77×768 text embeddings can be computed once at build time and shipped. That's
+about 118&nbsp;KB each in fp16, instead of shipping and running a 123M-parameter text encoder on the
+phone. One network fewer to convert, quantize and hold in memory.</p>
+</div>
+
+<h3>What ships in the bundle</h3>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Component</th><th>Model</th><th>Size (est.)</th><th>Runs on</th><th>Runs</th></tr></thead>
+<tbody>
+<tr><td>Face analysis</td><td>Apple Vision + small segmenter</td><td>few MB</td><td>ANE / CPU</td><td>once</td></tr>
+<tr><td>Face embedding</td><td>ArcFace-class, <strong>commercially licensed</strong></td><td>~5–100 MB</td><td>ANE</td><td>once + guard</td></tr>
+<tr><td>Prompt embeddings</td><td>precomputed, replaces the text encoder</td><td>~118 KB each</td><td>none</td><td>none</td></tr>
+<tr><td>UNet (+ inpaint variant)</td><td>SD 1.5, 860M, LCM-LoRA folded in</td><td>~430–650 MB at 4–6 bit</td><td>ANE</td><td>every step</td></tr>
+<tr><td>ControlNet</td><td>~360M</td><td>~200–270 MB</td><td>ANE</td><td>every step</td></tr>
+<tr><td>FaceID adapter</td><td>~22M + its LoRA</td><td>~50 MB</td><td>ANE</td><td>every step (path B)</td></tr>
+<tr><td>VAE encoder / decoder</td><td>34M / 50M</td><td>~70 MB</td><td>GPU?</td><td>once each</td></tr>
+<tr><td>Upscaler</td><td>small 2× SR model</td><td>~5–20 MB</td><td>ANE / GPU</td><td>once</td></tr>
+</tbody></table></div>
+
+<p>Sizes are estimates from parameter counts and target bit widths. Real numbers come from the
+quantization stage (step 7), and peak memory will matter more than file size.</p>
+
+<h3>How the pieces get built: the development loop</h3>
+
+<p>Code is written and smoke-tested on the laptop. Anything heavy runs on the cheapest rented GPU
+that fits, with the result copied back and the pod destroyed. The laptop is never used for real
+training.</p>
+
+<figure>
+<svg viewBox="0 0 860 190" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Development loop between laptop and RunPod GPU">
+<title>Development loop: laptop, RunPod pod, results, eval, next experiment</title>
+<defs><marker id="dv-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="30" width="185" height="70" rx="8" fill="#161d29" stroke="#2e3a4d"/>
+<text x="112" y="54" font-size="12" fill="#dde3ec">laptop · M4</text>
+<text x="112" y="72" font-size="10.5" fill="#76818f">write code</text>
+<text x="112" y="88" font-size="10.5" fill="#76818f">smoke-test locally</text>
+<rect x="235" y="30" width="215" height="70" rx="8" fill="#10151f" stroke="#f0b429" stroke-width="1.5"/>
+<text x="342" y="54" font-size="12" fill="#f0b429">RunPod · cheapest GPU</text>
+<text x="342" y="72" font-size="10.5" fill="#76818f">sync · verify GPU · run job</text>
+<text x="342" y="88" font-size="10.5" fill="#76818f">hard limit · self-delete</text>
+<rect x="480" y="30" width="180" height="70" rx="8" fill="#10151f" stroke="#7aa2d8" stroke-width="1.3"/>
+<text x="570" y="54" font-size="12" fill="#7aa2d8">outputs/ → laptop</text>
+<text x="570" y="72" font-size="10.5" fill="#76818f">images · CSVs · logs</text>
+<text x="570" y="88" font-size="10.5" fill="#76818f">not big checkpoints</text>
+<rect x="690" y="30" width="150" height="70" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.3"/>
+<text x="765" y="54" font-size="12" fill="#5ec27e">eval harness</text>
+<text x="765" y="72" font-size="10.5" fill="#76818f">numbers, not</text>
+<text x="765" y="88" font-size="10.5" fill="#76818f">impressions</text>
+</g>
+<path d="M205 65 H233" stroke="#4d586a" stroke-width="1.5" marker-end="url(#dv-ar)"/><path d="M450 65 H478" stroke="#4d586a" stroke-width="1.5" marker-end="url(#dv-ar)"/><path d="M660 65 H688" stroke="#4d586a" stroke-width="1.5" marker-end="url(#dv-ar)"/>
+<path d="M765 100 V145 H112 V104" stroke="#4d586a" stroke-width="1.3" fill="none" stroke-dasharray="4 4" marker-end="url(#dv-ar)"/>
+<text x="440" y="165" font-family="ui-monospace,Menlo,monospace" font-size="10.5" fill="#76818f" text-anchor="middle">decide the next single change · repeat</text>
+</svg>
+<figcaption>Every experiment ends with the pod destroyed and a number on the laptop.</figcaption>
+</figure>
+
+<h2 id="status"><span class="num">◆</span>Build status</h2>
+
+<p>Where the build actually is, following the order in section 07. Updated as stages land.</p>
+
+<div class="kpi">
+<div class="box"><span class="v">4 / 9</span><span class="k">stages done (0–3)</span></div>
+<div class="box"><span class="v">0.99</span><span class="k">identity metric AUC on 1000 LFW pairs</span></div>
+<div class="box"><span class="v">−0.03 → 0.47</span><span class="k">identity: stranger → my LoRA</span></div>
+<div class="box"><span class="v">~$0.35</span><span class="k">total GPU spend so far</span></div>
+</div>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Stage</th><th>Status</th><th>What came out of it</th></tr></thead>
+<tbody>
+<tr><td>0 · DDPM from scratch</td><td><strong style="color:var(--green)">done</strong></td><td><code>stage0_ddpm/</code>. 6.5M-param UNet, 20 epochs on MNIST on an RTX 3090 (~23 s/epoch, loss 0.022). DDIM-50 is ~20× faster than DDPM-1000 on the same weights (0.7 s vs 14.8 s for 10 images on the M4)</td></tr>
+<tr><td>1 · SD 1.5 taken apart</td><td><strong style="color:var(--green)">done</strong></td><td><code>stage1_sd_pipeline/</code>. Hand-written loop matches diffusers pixel for pixel, and so does my own DDIM step from stage 0. Measured shapes: 1×77×768 text, 1×4×64×64 latent (48× compression), 2×4×64×64 UNet batch under CFG, 50 UNet passes for 25 steps. 1.6 s on the 3090 vs ~37 s on the M4. First headshot: head cropped at the top, "navy blazer" came out grey, so framing and adherence are exactly the problems ControlNet and the eval harness exist for. <em>The CFG and sampler sweep grids were lost with the pod and need a ~2 min rerun</em></td></tr>
+<tr><td>2 · eval harness</td><td><strong style="color:var(--green)">done</strong></td><td><code>stage2_eval/</code>. Identity from two independent recognizers: AUC 0.993 / 0.992 on 1000 LFW pairs, 98.7% agreement, guard threshold cos ≥ 0.30. CLIP score. 13 compliance checks, 8/9 injected defects caught. Fixed prompt set (v2). Plain SD 1.5 baseline: CLIP 24.7, <strong>0/24 fully compliant</strong>, every face a stranger</td></tr>
+<tr><td>3 · first LoRA</td><td><strong style="color:var(--green)">done</strong></td><td><code>stage3_lora/</code>. 17 audited, captioned photos, trigger <code>ohwx man</code>. Rank 16 at 2000 steps: identity on headshots <strong>−0.03 → 0.47</strong> (passport 0.57), prompt adherence unchanged. Text-encoder LoRA: better in other styles (painting 0.16 → 0.35), slightly worse headshots. Pick: UNet-only, step 1500</td></tr>
+<tr><td>4 · sweeps</td><td><strong style="color:var(--accent)">next</strong></td><td>Rank 32 / 64, LR 2e-4, LoRA scale 0.6–1.0, as parallel jobs on one GPU. Identity plateaus at ~0.47; this is where capacity and LR get tested</td></tr>
+<tr><td>5 · FaceID + ControlNet</td><td>not started</td><td>Plus the edit path (extension D), and the full-precision quality ceiling (extension C)</td></tr>
+<tr><td>6–8 · Core ML, quantize, LCM</td><td>not started</td><td>The size / memory / latency / identity table</td></tr>
+</tbody></table></div>
+
+<h3>What running on rented GPUs taught me</h3>
+
+<p>Three pod sessions so far, about $0.35 in total. They surfaced these problems, all now handled in the scripts:</p>
+
+<ul>
+<li><strong>The stock API overstates cheap capacity.</strong> Community Cloud showed "Low" stock for
+$0.16–0.22 GPUs that couldn't actually be created, and spot pods are no longer offered at all. A
+create attempt is the only real availability check, so a retry loop now walks the approved GPUs
+cheapest first.</li>
+<li><strong>A pod can take ~8 minutes to boot</strong> while it pulls the image. The driver now waits
+15 minutes before giving up.</li>
+<li><strong>The RunPod PyTorch image has no torchvision.</strong> The job script now installs the build
+that exactly matches the image's torch and CUDA, and imports it before doing any GPU work.</li>
+<li><strong>The remote launcher held the SSH session open</strong> (inherited stdin), which hung the
+automation. Fixed with <code>setsid … &lt;/dev/null</code>.</li>
+<li><strong>CPU work doesn't belong on a GPU pod.</strong> One pod reported 48 CPUs but was capped at 5.1;
+CPU-only identity validation started 288 threads and starved the GPU. The rule since: GPU work on the
+pod, CPU work (face recognition, compliance, scoring) on the Mac.</li>
+<li><strong><code>cd X &amp;&amp; setsid job &amp;</code> holds the ssh session open</strong> until the job ends,
+because bash backgrounds the whole list in a subshell. Launch with <code>;</code>, not <code>&amp;&amp;</code>.</li>
+<li><strong>Pod-to-laptop bandwidth was ~8 KB/s</strong> once, and ~2.4 MB/s another time. A 104 MB checkpoint would have taken hours
+of billed time. Jobs should write small artifacts (images, CSVs, logs) and only keep the weights that
+the next stage needs.</li>
+</ul>
+
+<div class="callout good">
+<span class="label">What worked</span>
+<p>The self-delete switch did its job: the pod deleted itself 10 minutes after the job finished,
+with no one needing to remember. Running SD 1.5 alongside the small MNIST training kept the GPU busy
+instead of idle. And nothing ran on the laptop beyond short smoke tests.</p>
+</div>
+
+<h2 id="s0"><span class="num">00</span>The one hard problem</h2>
+
+<p>Stable Diffusion has never seen my face.</p>
+
+<p>That's it. That's the whole problem, and every technique below is a consequence of it. I can ask for
+a professional headshot and get a beautiful one — of a stranger. There's no token in the model's
+vocabulary that means me, there are no weights encoding my jaw, and no amount of prompt engineering
+will conjure them. Describing myself in words gets me somebody who matches the description, which is
+not the same thing at all.</p>
+
+<p>So the project splits into two halves that fail for completely different reasons:</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>Half one — identity</h4>
+    <p style="margin-bottom:0">Teach a general model one specific face, well enough that people who know me
+    recognise it instantly, while keeping its ability to put that face in a suit, in new lighting, at a
+    new angle. Fails by producing someone who merely resembles me, or by memorising my selfies so hard
+    it can't do anything else.</p>
+  </div>
+  <div class="card">
+    <h4>Half two — the device</h4>
+    <p style="margin-bottom:0">Take ~2&nbsp;GB of float32 PyTorch and get it running inside an iPhone's
+    memory budget at a tolerable speed, without wrecking the identity I just spent half one building.
+    Fails by not converting at all, by silently falling off the Neural Engine, or by getting killed for
+    peak memory.</p>
+  </div>
+</div>
+
+<p>What I want out of this document is to understand the mechanisms well enough that when something
+looks wrong I know which of maybe four things it could be, instead of changing hyperparameters at
+random and hoping.</p>
+
+<h2 id="s1"><span class="num">01</span>How diffusion actually makes a picture</h2>
+
+<p>The core trick is almost stupid when you first see it, and then you realise why it works.</p>
+
+<p><strong>Forward:</strong> take a real image and add a little Gaussian noise. Then a little more. Do
+it a thousand times and you have pure static. This direction needs no learning at all — it's just
+addition, and there's a closed form that jumps straight to step <em>t</em> without looping.</p>
+
+<p><strong>Reverse:</strong> train a network to undo one step. Give it a noisy image and the timestep,
+ask it to predict the noise that was added, subtract, repeat. Do that from pure static and a picture
+falls out of it.</p>
+
+<p>Why does that produce anything coherent? Because at high noise levels the network can only make
+coarse decisions — is this a face or a landscape, where's the bright region — and at low noise levels
+it's only deciding on eyelashes. The iteration is what buys structure. One shot from noise to image
+would have to commit to everything at once, and that's a much harder function to learn.</p>
+
+<h3>What it actually predicts</h3>
+
+<p>Almost always the noise, not the image. Predicting <code>ε</code> keeps the target at roughly unit
+variance across every timestep, so the loss doesn't need reweighting. Some models predict
+<code>v</code> instead, which is a blend of noise and signal that behaves better at the extreme ends of
+the schedule. The training loss is just MSE between predicted and actual noise. There's no adversarial
+game, no discriminator, nothing unstable. That's a large part of why diffusion won.</p>
+
+<h3>Latents, not pixels</h3>
+
+<p>Running that loop on 512×512×3 = 786,432 numbers is brutally expensive. Stable Diffusion doesn't.
+It trains an autoencoder first, compresses the image to a 64×64×4 latent (16,384 numbers, 48× fewer),
+and runs the entire diffusion process in there. At the end, one pass of a decoder turns the latent back
+into pixels.</p>
+
+<p>That single decision is what made this runnable on consumer hardware, and it's why "Stable Diffusion"
+is really <strong>three separate networks</strong> — which matters enormously for me later, because I
+convert, quantize and profile each one independently.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Component</th><th>Params</th><th>Runs</th><th>Job</th></tr></thead>
+<tbody>
+<tr><td><strong>Text encoder</strong><br><span style="color:var(--faint);font-size:13px">CLIP ViT-L/14</span></td><td>~123M</td><td>once</td><td>Prompt → 77×768 embedding</td></tr>
+<tr><td><strong>UNet</strong></td><td>~860M</td><td><strong>every step, twice</strong></td><td>Predict the noise, conditioned on text</td></tr>
+<tr><td><strong>VAE decoder</strong></td><td>~50M</td><td>once</td><td>64×64×4 latent → 512×512×3 pixels</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>Look at the "runs" column. The UNet is 95% of my compute budget and essentially all of my
+optimisation work. The text encoder runs once and I can almost ignore it. The VAE decoder runs once but
+is surprisingly memory-hungry, because it's operating at full resolution.</p>
+
+<figure>
+<svg viewBox="0 0 860 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The three networks of Stable Diffusion and the denoising loop">
+<title>The three networks of Stable Diffusion and the denoising loop</title>
+<text x="24" y="30" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#76818f">PROMPT</text>
+<rect x="24" y="44" width="150" height="40" rx="7" fill="#161d29" stroke="#2e3a4d"/>
+<text x="99" y="65" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#dde3ec" text-anchor="middle">"headshot, suit"</text>
+<path d="M174 64 H212" stroke="#4d586a" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="212" y="40" width="128" height="48" rx="7" fill="#10151f" stroke="#7aa2d8" stroke-width="1.5"/>
+<text x="276" y="59" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#7aa2d8" text-anchor="middle">text encoder</text>
+<text x="276" y="76" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f" text-anchor="middle">123M · runs once</text>
+<path d="M340 64 H420 V128" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<text x="430" y="105" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f">77 × 768</text>
+
+<text x="24" y="150" font-family="ui-monospace,Menlo,monospace" font-size="13" fill="#76818f">NOISE</text>
+<rect x="24" y="164" width="150" height="40" rx="7" fill="#161d29" stroke="#2e3a4d"/>
+<text x="99" y="185" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#93a0b4" text-anchor="middle">64 × 64 × 4</text>
+<path d="M174 184 H300" stroke="#4d586a" stroke-width="1.5" marker-end="url(#ar)"/>
+
+<rect x="300" y="132" width="240" height="104" rx="10" fill="#10151f" stroke="#f0b429" stroke-width="2"/>
+<text x="420" y="160" font-family="ui-monospace,Menlo,monospace" font-size="15" font-weight="600" fill="#f0b429" text-anchor="middle">UNet</text>
+<text x="420" y="180" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#93a0b4" text-anchor="middle">860M params</text>
+<text x="420" y="198" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0883e" text-anchor="middle">runs 2× per step</text>
+<text x="420" y="216" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0883e" text-anchor="middle">≈ 95% of all compute</text>
+
+<path d="M540 160 H580 V250 H300 V212" stroke="#f0b429" stroke-width="1.5" fill="none" stroke-dasharray="4 3" marker-end="url(#arg)"/>
+<text x="440" y="268" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0b429" text-anchor="middle">× 20–50 steps · this loop is the whole cost</text>
+
+<path d="M540 200 H620" stroke="#4d586a" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="620" y="176" width="120" height="48" rx="7" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/>
+<text x="680" y="195" font-family="ui-monospace,Menlo,monospace" font-size="12.5" fill="#5ec27e" text-anchor="middle">VAE decode</text>
+<text x="680" y="212" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f" text-anchor="middle">once · 50M</text>
+<path d="M740 200 H790" stroke="#4d586a" stroke-width="1.5" marker-end="url(#ar)"/>
+<rect x="790" y="180" width="46" height="40" rx="6" fill="#161d29" stroke="#2e3a4d"/>
+<text x="813" y="196" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#dde3ec" text-anchor="middle">512²</text>
+<text x="813" y="210" font-family="ui-monospace,Menlo,monospace" font-size="10" fill="#76818f" text-anchor="middle">RGB</text>
+<defs>
+<marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker>
+<marker id="arg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#f0b429"/></marker>
+</defs>
+</svg>
+<figcaption>Three networks, one loop. Optimisation effort goes where the loop is.</figcaption>
+</figure>
+
+<h3>Samplers: why 50 steps became 20</h3>
+
+<p>Here's the thing that confused me for a while. The sampler is <em>not</em> part of the model. The
+UNet just predicts noise at a given timestep. Turning those predictions into a trajectory from static
+to image is a numerical integration problem, and you can swap the integrator without retraining
+anything.</p>
+
+<ul>
+<li><strong>DDPM</strong> — the original, stochastic, needs hundreds of steps.</li>
+<li><strong>DDIM</strong> — makes it deterministic and lets you skip timesteps. Same model, 50 steps instead of 1000.</li>
+<li><strong>DPM-Solver++ / UniPC</strong> — higher-order ODE solvers. Good images at 20–25 steps.</li>
+</ul>
+
+<p>That's free speed from better numerics, and it's completely separate from the distillation work in
+section 06, which changes the model itself.</p>
+
+<h3>Classifier-free guidance, and why it doubles my bill</h3>
+
+<p>A raw conditional diffusion model follows the prompt weakly. CFG is the fix, and it's the reason
+"runs 2× per step" is in that table.</p>
+
+<p>Each step you run the UNet <em>twice</em> — once with the prompt, once with an empty prompt — and
+then extrapolate away from the unconditional prediction:</p>
+
+<pre><code>noise = uncond + scale * (cond - uncond)</code></pre>
+
+<p>At <code>scale = 1</code> you get the plain conditional output. Crank it to 7.5 and the model pushes
+hard toward whatever makes this prompt different from no prompt at all. Push much past that and faces
+go saturated and plastic, contrast blows out, and detail turns to wax.</p>
+
+<div class="callout key">
+<span class="label">The deployment consequence</span>
+<p>20 sampler steps at CFG means <strong>40 UNet forward passes</strong>, not 20. Any latency estimate
+that forgets this is off by 2×. There are tricks to avoid it — batching both passes together, or
+distilled models that bake the guidance in — and I'll need one of them.</p>
+</div>
+
+<h2 id="s2"><span class="num">02</span>Four ways to teach it my face</h2>
+
+<p>These are genuinely different mechanisms, not variations on one. They differ in what they change,
+how big the artifact is, how long training takes, and how well the likeness holds. Understanding why
+each exists is most of the battle.</p>
+
+<h3>1 — Textual Inversion: invent a word</h3>
+
+<p>Freeze the entire model. Add <em>one</em> new vector to the text encoder's embedding table, call it
+<code>&lt;jai&gt;</code>, and optimise only that vector so that generating from prompts containing it
+reproduces my photos.</p>
+
+<p>The artifact is a few kilobytes — literally one 768-dim vector. It composes beautifully with
+anything. But you're trying to describe a face using only the expressive range the frozen model already
+has, and one vector isn't much of a budget. Likeness comes out weak. Good for styles, not great for
+people.</p>
+
+<h3>2 — DreamBooth: retrain the whole thing</h3>
+
+<p>Fine-tune all the UNet weights on 15–20 photos, binding me to a rare token. Works very well and
+produces the strongest likeness of the classic methods.</p>
+
+<p>Two problems. The artifact is a full model — gigabytes per person, which kills the "ship an adapter
+to the phone" architecture instantly. And it suffers <strong>language drift</strong>: train hard on
+photos of one man and the model quietly forgets what other men look like, so now every "person" it
+generates drifts toward me. The paper's fix is a <em>prior preservation loss</em> — generate a few
+hundred images of the generic class "a photo of a person" using the untouched model first, and train on
+those alongside my photos so the model is continuously reminded what the class looks like.</p>
+
+<h3>3 — LoRA: the one I'll actually use</h3>
+
+<p>This is the important one, so let me do the arithmetic properly.</p>
+
+<p>Fine-tuning updates a weight matrix <code>W</code> to <code>W + ΔW</code>. The LoRA observation is
+that for a specific adaptation, <code>ΔW</code> has low intrinsic rank — the update isn't using
+anything like the full dimensionality available to it. So don't store <code>ΔW</code> as a dense
+<em>d×k</em> matrix. Store it factored:</p>
+
+<pre><code>ΔW = B · A      B is d×r,  A is r×k,  r ≪ min(d,k)</code></pre>
+
+<p>Train <code>A</code> and <code>B</code>, leave <code>W</code> frozen. For a 768×768 attention
+projection, that's 589,824 parameters down to 768×8 + 8×768 = <strong>12,288</strong> at rank 8. A 48×
+reduction. Applied across the UNet's attention blocks, my per-person artifact is somewhere around
+<strong>10–60&nbsp;MB</strong> instead of 3.4&nbsp;GB.</p>
+
+<p>Two details that make it better than the headline:</p>
+
+<ul>
+<li><strong><code>B</code> is initialised to zero.</strong> So <code>BA = 0</code> at step 0 and the
+adapted model is <em>exactly</em> the base model. Training starts from known-good rather than from a
+random perturbation, which is a big part of why LoRA is stable at learning rates that would wreck a
+full fine-tune.</li>
+<li><strong>It folds away at inference.</strong> Compute <code>W + BA</code> once, write it into the
+weights, and you're running an ordinary UNet. Zero runtime overhead, zero extra ops for the Core ML
+converter to choke on. For on-device work this is enormous — the adapter never has to exist on the
+phone as a separate thing.</li>
+</ul>
+
+<figure>
+<svg viewBox="0 0 860 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LoRA low-rank decomposition of a weight update">
+<title>LoRA low-rank decomposition</title>
+<rect x="40" y="52" width="130" height="130" rx="8" fill="#161d29" stroke="#2e3a4d" stroke-width="1.5"/>
+<text x="105" y="112" font-family="ui-monospace,Menlo,monospace" font-size="21" font-weight="600" fill="#93a0b4" text-anchor="middle">W</text>
+<text x="105" y="134" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f" text-anchor="middle">768 × 768</text>
+<text x="105" y="204" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#76818f" text-anchor="middle">frozen</text>
+<text x="105" y="222" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#76818f" text-anchor="middle">589,824 params</text>
+<text x="196" y="122" font-family="ui-monospace,Menlo,monospace" font-size="24" fill="#4d586a" text-anchor="middle">+</text>
+
+<rect x="230" y="52" width="34" height="130" rx="6" fill="#10151f" stroke="#f0b429" stroke-width="2"/>
+<text x="247" y="122" font-family="ui-monospace,Menlo,monospace" font-size="17" font-weight="600" fill="#f0b429" text-anchor="middle">B</text>
+<text x="247" y="204" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f" text-anchor="middle">768×8</text>
+<text x="290" y="122" font-family="ui-monospace,Menlo,monospace" font-size="20" fill="#4d586a" text-anchor="middle">·</text>
+<rect x="316" y="100" width="130" height="34" rx="6" fill="#10151f" stroke="#f0b429" stroke-width="2"/>
+<text x="381" y="122" font-family="ui-monospace,Menlo,monospace" font-size="17" font-weight="600" fill="#f0b429" text-anchor="middle">A</text>
+<text x="381" y="204" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="#76818f" text-anchor="middle">8×768</text>
+<text x="381" y="222" font-family="ui-monospace,Menlo,monospace" font-size="11.5" fill="#f0b429" text-anchor="middle">12,288 trained</text>
+
+<text x="480" y="122" font-family="ui-monospace,Menlo,monospace" font-size="22" fill="#4d586a" text-anchor="middle">→</text>
+<rect x="520" y="76" width="300" height="82" rx="9" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/>
+<text x="670" y="104" font-family="ui-monospace,Menlo,monospace" font-size="14" fill="#5ec27e" text-anchor="middle">48× fewer parameters</text>
+<text x="670" y="126" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#93a0b4" text-anchor="middle">B starts at zero → step 0 == base model</text>
+<text x="670" y="145" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#93a0b4" text-anchor="middle">folds into W at inference → free</text>
+<text x="105" y="34" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#76818f" text-anchor="middle">base weight</text>
+<text x="330" y="34" font-family="ui-monospace,Menlo,monospace" font-size="12" fill="#f0b429" text-anchor="middle">the entire trainable part</text>
+</svg>
+<figcaption>Rank 8 on one attention projection. Multiply across the UNet and a person fits in ~30 MB.</figcaption>
+</figure>
+
+<h4>Where it attaches</h4>
+<p>The cross-attention blocks, mainly — that's where text conditioning enters the UNet, so it's the
+natural lever for "make this prompt mean this face". Most implementations hit the <code>to_q</code>,
+<code>to_k</code>, <code>to_v</code> and <code>to_out</code> projections of both self- and
+cross-attention. Including the feed-forward layers helps a little and costs size.</p>
+
+<h4>Rank and alpha</h4>
+<p>Rank is capacity. Too low and it can't hold a face; too high and it memorises backgrounds and
+overfits like a full fine-tune. Alpha is a scaling factor applied as <code>alpha/r</code> — it exists
+so that changing rank doesn't force you to re-tune the learning rate. People treat it as a second
+knob but it mostly just trades off against LR.</p>
+
+<h3>4 — IP-Adapter: don't train at all</h3>
+
+<p>Completely different idea. The UNet already has cross-attention layers that attend to text
+embeddings. IP-Adapter bolts on a <em>parallel</em> set of cross-attention layers that attend to an
+<strong>image</strong> embedding, and sums the two outputs.</p>
+
+<p>The word that matters is <strong>decoupled</strong>. The obvious approach — concatenate the image
+embedding onto the text sequence and use the existing attention — makes them compete for the same K/V
+projections, and the image tends to lose. Giving the image its own projections lets both signals apply
+at full strength.</p>
+
+<p>Nothing in the base model changes. The adapter is ~22M params, trained once, on a big dataset, and
+then it works on <em>any</em> face at inference with zero training. One photo, instant results.</p>
+
+<div class="callout warn">
+<span class="label">The catch, and it's the key insight of this whole section</span>
+<p>Plain IP-Adapter uses a <strong>CLIP image encoder</strong>. CLIP was trained to match images with
+captions, so its embedding encodes <em>"a man in his late twenties, short dark hair, brown skin"</em>.
+Feed that in and you get someone who matches that description — you get my cousin, not me.</p>
+<p>ArcFace and friends are trained with a completely different objective: push two photos of the same
+person together in embedding space and two photos of different people apart, and nothing else. That's a
+far sharper notion of identity. <strong>IP-Adapter-FaceID</strong>, <strong>InstantID</strong> and
+<strong>PhotoMaker</strong> all essentially swap the generic image encoder for a face-recognition one.
+That swap is the difference between "resembles" and "is".</p>
+</div>
+
+<h3>And separately: ControlNet, which is not about identity</h3>
+
+<p>Worth keeping in a different mental box. ControlNet clones the UNet's encoder into a trainable copy
+connected by zero-initialised convolutions, and conditions on a spatial map — pose skeleton, depth,
+edges, segmentation. It controls <em>where things are</em>, not <em>who they are</em>.</p>
+
+<p>For headshots I need it anyway: framing, head position, shoulder angle and camera distance all have
+to be controllable if I'm going to hit a compliance spec. Identity and layout are orthogonal axes and I
+should be able to move them independently.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Method</th><th>What changes</th><th>Artifact</th><th>Train time</th><th>Likeness</th></tr></thead>
+<tbody>
+<tr><td>Textual Inversion</td><td>1 embedding vector</td><td>~5 KB</td><td>~30 min</td><td>weak</td></tr>
+<tr><td>DreamBooth</td><td>all UNet weights</td><td>2–4 GB</td><td>~20 min</td><td>strong</td></tr>
+<tr><td><strong>LoRA</strong></td><td>low-rank deltas on attention</td><td><strong>10–60 MB</strong></td><td>~15 min</td><td>strong</td></tr>
+<tr><td>IP-Adapter (CLIP)</td><td>nothing — extra attention path</td><td>0 per person</td><td><strong>none</strong></td><td>moderate</td></tr>
+<tr><td>IP-Adapter-FaceID / InstantID</td><td>nothing — face embedding path</td><td>0 per person</td><td><strong>none</strong></td><td>strong</td></tr>
+</tbody>
+</table>
+</div>
+
+<p>These stack. The best results I've seen described come from LoRA <em>and</em> a FaceID adapter
+<em>and</em> ControlNet together, each doing its own job. That's also three things to convert to Core
+ML later, so there's a real tension between quality and shippability that I'll have to measure rather
+than guess at.</p>
+
+<h2 id="s3"><span class="num">03</span>Making it actually good</h2>
+
+<p>Getting a LoRA to train is easy. Getting one that produces a likeness people recognise <em>and</em>
+still does what the prompt asks is where all the difficulty lives. This section is the practical core.</p>
+
+<h3>The dataset is most of the quality</h3>
+
+<p>More than rank, more than learning rate, more than which base model. 15–25 images is the sweet
+spot — fewer and it can't generalise, more and you're mostly adding redundancy and training time.</p>
+
+<div class="grid2">
+<div class="card">
+<h4 style="color:var(--green)">What to include</h4>
+<ul style="margin-bottom:0">
+<li><strong>Varied backgrounds.</strong> If every photo is my bedroom wall, the model learns that the wall is part of me.</li>
+<li><strong>Varied lighting</strong> — window, indoor, outdoor, overcast.</li>
+<li><strong>Varied angles</strong> — front, three-quarter both sides, slight up and down.</li>
+<li><strong>Varied expressions</strong> and a couple with and without a smile.</li>
+<li><strong>Varied distance</strong> — mostly head-and-shoulders, a few closer, a couple further out.</li>
+<li>Sharp focus on the face. Resolution above 512 so cropping has room.</li>
+</ul>
+</div>
+<div class="card">
+<h4 style="color:var(--amber)">What to throw out</h4>
+<ul style="margin-bottom:0">
+<li><strong>Other people in frame</strong> — a hard no, the model can't tell which face it's learning.</li>
+<li>Sunglasses, hats, heavy shadow across the face.</li>
+<li>Anything blurry or heavily compressed.</li>
+<li>Photos from the same 10-second burst — that's one photo wearing four hats.</li>
+<li>Strong filters or phone beauty-mode smoothing, which bakes in an effect.</li>
+<li>Extreme wide-angle selfies — the lens distorts the nose and you'll learn the distortion.</li>
+</ul>
+</div>
+</div>
+
+<div class="callout key">
+<span class="label">The captioning rule that changes everything</span>
+<p>Here's the principle I'd not have guessed: <strong>caption what you want the model to be able to
+change. Leave out what you want it to absorb as identity.</strong></p>
+<p>So: <code>"photo of sks person, wearing a blue shirt, standing in a kitchen, smiling, side lighting"</code>.
+Because I described the shirt and the kitchen, the model attaches those to <em>those words</em> and
+learns that they vary. Because I never described the face, the face is the residual — the thing that's
+always there and never named, which attaches to <code>sks person</code>.</p>
+<p>If I caption every photo <code>"photo of sks person"</code> and nothing else, the shirt and the
+kitchen have nowhere to go, so they get absorbed into the token too. That's precisely the overfitting
+failure people describe as "my LoRA only makes one picture".</p>
+</div>
+
+<h3>Starting hyperparameters</h3>
+
+<p>These are widely-reported starting points for a face LoRA on SD 1.5, not gospel. I'll sweep from
+here rather than treat them as answers.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Setting</th><th>Start at</th><th>Why / what moves it</th></tr></thead>
+<tbody>
+<tr><td>Images</td><td>15–25</td><td>Below ~10 it won't generalise across angles</td></tr>
+<tr><td>Resolution</td><td>512, bucketed</td><td>SD 1.5's native size. 768 wastes time and can degrade</td></tr>
+<tr><td>Rank (dim)</td><td><strong>16–32</strong></td><td>Faces need more capacity than styles. 4–8 is a style setting</td></tr>
+<tr><td>Alpha</td><td>= rank, or rank/2</td><td>Halving alpha is roughly halving LR</td></tr>
+<tr><td>UNet LR</td><td><strong>1e-4</strong></td><td>The single most sensitive knob</td></tr>
+<tr><td>Text-encoder LR</td><td>5e-5, or off</td><td>Training it helps likeness, hurts flexibility. Try both</td></tr>
+<tr><td>Total steps</td><td>1500–2500</td><td>Rule of thumb ~100 × image count</td></tr>
+<tr><td>Batch size</td><td>1–4</td><td>Larger needs proportionally higher LR</td></tr>
+<tr><td>Schedule</td><td>cosine, short warmup</td><td>Constant works too</td></tr>
+<tr><td>Optimizer</td><td>AdamW8bit / Prodigy</td><td>Prodigy tunes its own LR, useful for a first pass</td></tr>
+<tr><td>Instance token</td><td>a rare token</td><td>Must carry little prior meaning</td></tr>
+<tr><td>Save every</td><td><strong>250 steps</strong></td><td>Non-negotiable — see below</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+<span class="label">Checkpoint often, choose later</span>
+<p>The best LoRA is almost never the last one. Likeness climbs, plateaus, then flexibility starts
+falling off a cliff while likeness keeps inching up — and the loss curve shows none of this. Saving
+every 250 steps and then <em>generating the same fixed prompt set from every checkpoint</em> turns
+"pick a good model" into a measurement instead of a vibe.</p>
+</div>
+
+<h3>How overfitting announces itself</h3>
+
+<p>Four symptoms, and they tell you different things:</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Symptom</th><th>Means</th><th>Fix</th></tr></thead>
+<tbody>
+<tr><td>Same background in every output</td><td>Background absorbed into the token</td><td>Caption backgrounds; more varied photos</td></tr>
+<tr><td>Can't change clothing or setting</td><td>Trained too long, or rank too high</td><td>Earlier checkpoint; lower rank</td></tr>
+<tr><td>Contrast and saturation blown out ("burnt")</td><td>LR too high</td><td>Drop UNet LR to 5e-5</td></tr>
+<tr><td>Always the same expression and angle</td><td>Dataset too uniform</td><td>Actually go and take more photos</td></tr>
+<tr><td>Every generated person looks like me</td><td>Language drift</td><td>Prior-preservation images; lower TE LR</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Inference settings that matter as much as training</h3>
+
+<ul>
+<li><strong>LoRA scale 0.6–0.9</strong>, not 1.0. Dialling it down often buys a lot of prompt
+flexibility for very little likeness. This is free tuning after training is done and I suspect it's
+under-explored.</li>
+<li><strong>CFG 4–7</strong> for photorealistic faces. SD 1.5's default 7.5 is already on the edge of
+plastic for skin.</li>
+<li><strong>DPM++ 2M Karras, 20–30 steps</strong> as the quality baseline — before any distillation.</li>
+<li><strong>Negative prompts carry real weight on SD 1.5</strong> in a way they don't on newer models.
+Since CFG is computing <code>cond - uncond</code>, putting terms in the negative literally steers the
+subtraction.</li>
+<li><strong>Generate at 512 and upscale.</strong> Asking SD 1.5 for 1024 directly gives duplicated
+features and two-headed compositions, because it never saw that resolution in training.</li>
+</ul>
+
+<div class="callout warn">
+<span class="label">Face restoration will lie to you</span>
+<p>GFPGAN and CodeFormer make faces look dramatically cleaner, and they do it by pulling the face
+toward <em>their</em> learned prior of what a face is. Which means they can smooth away the exact
+idiosyncrasies that made it recognisably me. It'll look better and score worse. That's a genuine
+tradeoff and I want the identity number on both sides of it before deciding.</p>
+</div>
+
+<h2 id="s4"><span class="num">04</span>How I know it worked</h2>
+
+<p>Everything above is unfalsifiable without this section. And it matters twice: once for choosing a
+training recipe, and again — much more — when I start quantizing, because "did 4-bit break it?" has to
+have an answer that isn't me squinting at pictures.</p>
+
+<h3>Two axes, and they trade against each other</h3>
+
+<p><strong>Identity.</strong> Run a face-recognition model over the generated image and over my real
+photos, take the cosine similarity of the embeddings. ArcFace via <code>insightface</code> is the
+standard. Same-person pairs typically land far above different-person pairs, and the gap is wide enough
+to be a usable signal.</p>
+
+<p><strong>Prompt adherence.</strong> CLIP score — cosine similarity between the CLIP embedding of the
+generated image and of the prompt text. Crude, but it moves in the right direction when the model stops
+listening.</p>
+
+<p>The reason both are needed: a LoRA that's memorised my selfies scores <em>brilliantly</em> on
+identity. It just ignores every prompt. Either number alone can be gamed by a broken model, and the
+pair can't.</p>
+
+<div class="callout warn">
+<span class="label">A trap I want to name before I fall into it</span>
+<p>If I measure identity with ArcFace and then tune everything to maximise ArcFace cosine, I'm
+optimising against <em>ArcFace's opinion</em> of what makes a face that face. That isn't the same as my
+mother recognising me. It's still the best instrument I have and I'm going to use it — but a number
+going up is evidence, not proof, and I should look at a grid of actual images at every decision point.</p>
+</div>
+
+<h3>The fixed prompt set</h3>
+
+<p>The thing that makes any of this comparable. Write ~12 prompts once, freeze the seeds, and every
+checkpoint and every quantization level generates exactly those. Something like:</p>
+
+<pre><code><span class="c"># identity under variation — should all still be me</span>
+"corporate headshot of sks person, navy suit, grey backdrop, softbox lighting"
+"sks person, outdoors, overcast daylight, smiling"
+"profile view of sks person, three-quarter angle"
+"sks person wearing glasses, office background"
+
+<span class="c"># flexibility — does it still obey anything at all</span>
+"sks person as an astronaut, spacesuit, on the moon"
+"oil painting portrait of sks person in renaissance style"
+"sks person in a red hoodie on a beach at sunset"
+
+<span class="c"># the target use case — compliance</span>
+"passport photo of sks person, plain white background, neutral expression, front facing"</code></pre>
+
+<p>If the astronaut prompt returns me in my kitchen, the LoRA is overcooked, and I'll know that in
+thirty seconds instead of three days.</p>
+
+<h3>The objective axis: compliance checks</h3>
+
+<p>This is the part that makes the whole project measurable in a way most generative work isn't. ID
+photo standards are <em>written down</em> (ICAO 9303 is the international one), and a useful subset is
+plain computer vision:</p>
+
+<ul>
+<li><strong>Head height ratio</strong> — chin to crown as a fraction of frame height, from face landmarks.</li>
+<li><strong>Eye line position</strong> — eyes should sit in a specified band from the bottom.</li>
+<li><strong>Horizontal centring</strong> and head roll angle.</li>
+<li><strong>Background uniformity</strong> — pixel variance in the border region after masking the subject.</li>
+<li><strong>Shadow detection</strong> — luminance asymmetry between left and right halves of the face.</li>
+<li><strong>Sharpness</strong> — variance of the Laplacian.</li>
+<li><strong>Eyes open, mouth closed, facing forward</strong> — landmark geometry.</li>
+</ul>
+
+<p>MediaPipe Face Mesh gives me the landmarks. Under a hundred lines gets a pass-rate percentage that's
+genuinely objective. And the beauty of it is that quantization damage shows up here <em>differently</em>
+than it does on identity — a broken VAE decoder tanks sharpness and background uniformity while leaving
+face geometry intact. Two instruments, two failure signatures.</p>
+
+<div class="callout">
+<span class="label">What not to bother with</span>
+<p>FID is the default metric in every image-generation paper and it's useless here. It compares
+distributions and needs thousands of samples to mean anything, and I care about whether <em>this
+specific image</em> is <em>this specific person</em>. Wrong tool.</p>
+</div>
+
+<h2 id="s5"><span class="num">05</span>Getting it onto the phone</h2>
+
+<p>This is where the JD-shaped skills actually live, and where most people abandon the project.</p>
+
+<h3>Why conversion exists at all</h3>
+
+<p>PyTorch is Python. A phone doesn't run Python — it runs a compiled graph on a fixed-function
+accelerator. So something has to turn a program with branches and dynamic shapes into a static list of
+ops with known tensor sizes.</p>
+
+<p>Two ways to get there, and they fail differently:</p>
+
+<ul>
+<li><strong>Tracing</strong> runs the model once with a dummy input and records the ops that actually
+executed. Simple, works most of the time, and silently bakes in whatever your control flow happened to
+do on that one input. An <code>if</code> that depended on the data is now permanently resolved to one
+branch and nothing warns you.</li>
+<li><strong>Scripting</strong> parses the Python directly. More faithful, far pickier about what it
+accepts.</li>
+</ul>
+
+<p>What breaks, roughly in order of frequency: dynamic shapes, Python control flow that depends on
+tensor <em>values</em>, <code>einsum</code> and fancy indexing, and ops that simply have no equivalent
+in the target runtime.</p>
+
+<h3>ONNX vs Core ML — which and when</h3>
+
+<p>ONNX is the neutral interchange format, and ONNX Runtime executes it on CPU, CUDA, TensorRT and
+mobile. Core ML is Apple's own format and the only way to touch the Neural Engine.</p>
+
+<p>For an iPhone target, <code>coremltools</code> converting from PyTorch directly is the shorter path
+— going through ONNX first adds a hop and a set of translation bugs. I'd learn ONNX anyway because it's
+where the TensorRT and Android paths start, but for this project Core ML is the destination.</p>
+
+<div class="callout good">
+<span class="label">The thing that makes this tractable</span>
+<p><a href="https://github.com/apple/ml-stable-diffusion">apple/ml-stable-diffusion</a> is a working,
+Apple-maintained conversion of Stable Diffusion to Core ML, including the quantization work and a Swift
+inference package. I'm going to do the conversion myself to hit the failure modes on purpose — that's
+the point — but having a known-good implementation to diff against when my UNet outputs grey soup
+removes the single biggest time sink on this project.</p>
+</div>
+
+<h3>What the Neural Engine actually is</h3>
+
+<p>Not a small GPU. It's a fixed-function matrix-multiply engine with its own memory layout and a
+narrow list of supported ops. Three consequences:</p>
+
+<ol>
+<li><strong>Unsupported ops don't fail, they fall back.</strong> The tensor gets handed to GPU or CPU
+mid-graph, and the handoff costs more than the op did.</li>
+<li><strong>A model that's "90% on ANE" can be slower than one that's 0% on ANE</strong>, if that 10%
+is scattered through the middle causing constant round trips. Contiguity matters more than percentage.</li>
+<li><strong>It wants a specific data layout.</strong> Apple's own writeup on deploying transformers to
+ANE is the essential read: prefer 4D tensors in <code>(B, C, 1, S)</code>, split attention heads into
+separate convolutions, avoid anything that forces a transpose.</li>
+</ol>
+
+<p>Xcode's Core ML performance report shows per-op placement — ANE, GPU or CPU, op by op. That report
+<em>is</em> the profiling tool for this half of the project.</p>
+
+<p>And <code>MLComputeUnits</code> is a real experiment, not a setting to leave on default:
+<code>.all</code>, <code>.cpuAndGPU</code>, <code>.cpuAndNeuralEngine</code>, <code>.cpuOnly</code>. The
+best choice differs per submodel — it's entirely plausible the UNet wants ANE while the VAE decoder is
+faster on GPU.</p>
+
+<h3>Quantization and palettization are not the same thing</h3>
+
+<p>These get used interchangeably and conflating them cost me half an hour of confusion, so:</p>
+
+<div class="grid2">
+<div class="card">
+<h4>Quantization</h4>
+<p style="margin-bottom:0">Map a float range onto integers with a <strong>scale</strong> and a
+<strong>zero point</strong>. Weights land on a uniform grid. Arithmetic can happen in int8 where the
+hardware supports it, so you get speed <em>and</em> size.</p>
+</div>
+<div class="card">
+<h4>Palettization</h4>
+<p style="margin-bottom:0">Cluster the weights into a small <strong>lookup table</strong> — 16 distinct
+values for 4-bit — and store an index per weight. Not a uniform grid; pointers into a codebook. Mostly
+a <em>size</em> win. This is what Core ML leans on for diffusion models, and it's why 4-bit SD holds up
+much better than the phrase "4-bit" suggests.</p>
+</div>
+</div>
+
+<h4>Calibration, and why activations are the hard part</h4>
+<p>Weights you can quantize by inspection — they're sitting right there and you can measure their
+range. Activations you can't, because their range depends on the input. So you run a few hundred
+representative inputs through, record the observed range at each layer, and derive scales from that.
+That set is the <strong>calibration data</strong>, and choosing it badly is one of the standard ways to
+ship a quantized model that's subtly broken.</p>
+
+<h4>Why diffusion UNets resist INT8 specifically</h4>
+<p>They have <strong>activation outliers</strong> — a handful of channels whose range is orders of
+magnitude larger than everything around them. Per-tensor scaling then spends nearly all 256 of its
+levels covering those few channels, and the rest of the tensor gets crushed into a couple of levels.</p>
+<p>Fixes, in order: <strong>per-channel</strong> scaling instead of per-tensor; then keeping the worst
+layers in FP16 (mixed precision); then smoothing techniques that shift the difficulty from activations
+into weights, where it's easier to handle.</p>
+
+<div class="callout warn">
+<span class="label">Quantize the three networks separately</span>
+<p>They have different sensitivities and lumping them together loses information. The VAE decoder in
+particular is notorious — it's the last thing to touch the image, so its errors land directly in output
+pixels with nothing downstream to absorb them. Expect to keep it at higher precision than the UNet, and
+expect the compliance checks to be what tells you so.</p>
+</div>
+
+<div class="kpi">
+<div class="box"><span class="v">~2 GB</span><span class="k">SD 1.5, three nets, FP16</span></div>
+<div class="box"><span class="v">~860M</span><span class="k">UNet params — the whole ballgame</span></div>
+<div class="box"><span class="v">2×</span><span class="k">UNet passes per step, from CFG</span></div>
+<div class="box"><span class="v">peak ≠ size</span><span class="k">what actually gets you killed</span></div>
+</div>
+
+<h3>Peak memory is a different number from model size</h3>
+
+<p>The one that'll bite. A 600 MB model does not use 600 MB at runtime — it uses weights plus
+activations plus whatever attention allocates at that resolution, and the VAE decoder's peak happens at
+full 512×512 resolution with wide channel counts. iOS hands an app a memory budget and kills it without
+ceremony when it's exceeded. So the number I instrument for is <strong>peak resident memory</strong>,
+not file size, and they can differ by more than 2×.</p>
+
+<h2 id="s6"><span class="num">06</span>Making it fast enough</h2>
+
+<p>Ranked by how much they actually buy, which is not the order people usually try them in.</p>
+
+<div class="step">
+<div class="sn">1</div>
+<h3>Cut the step count</h3>
+<p class="dur">Biggest single lever, by a long way</p>
+<p>20 steps × 2 (CFG) = 40 UNet passes. Distilled models do the whole image in 4–8 steps total, and
+some in one. That's a 5–10× cut before touching a single weight. Everything else on this list is
+rounding error by comparison.</p>
+<p><strong>LCM-LoRA is the one to reach for first</strong>, because the distillation is itself packaged
+as a LoRA. So it stacks onto the same base model alongside my identity LoRA — no separate checkpoint,
+no separate conversion. Latent Consistency Models learn to jump directly to the solution of the ODE
+trajectory instead of walking it. SDXL-Turbo and the adversarial-distillation family go further, to
+1–4 steps, at some cost in diversity.</p>
+<p>Distilled models also typically run at <strong>CFG 1</strong> — guidance is baked in — which removes
+the 2× on top. Both wins at once.</p>
+</div>
+
+<div class="step">
+<div class="sn">2</div>
+<h3>Get the UNet resident on ANE</h3>
+<p class="dur">Large, and the fiddliest to achieve</p>
+<p>Correct tensor layout, attention reshaped the way Apple's writeup describes, no ops causing
+fallback in the middle of the graph. Measured in Xcode's performance report, not assumed.</p>
+</div>
+
+<div class="step">
+<div class="sn">3</div>
+<h3>Quantize</h3>
+<p class="dur">Mostly a size and memory win</p>
+<p>FP16 is nearly free. 8-bit palettization is usually safe. 4-bit is where it gets interesting and
+where my eval harness starts earning its keep. Speed gains depend on whether the hardware has a fast
+path for that precision — don't assume smaller means faster.</p>
+</div>
+
+<div class="step">
+<div class="sn">4</div>
+<h3>Batch the CFG pair</h3>
+<p class="dur">Only if not using a distilled model</p>
+<p>Run conditional and unconditional as a batch of 2 in one forward pass instead of two sequential
+passes. Better hardware utilisation for the same arithmetic.</p>
+</div>
+
+<div class="step">
+<div class="sn">5</div>
+<h3>Generate small, upscale after</h3>
+<p class="dur">Structural, and it compounds</p>
+<p>Diffusion cost scales with latent area. 512² then a cheap 2× upscaler beats 1024² diffusion on both
+time and memory, and on SD 1.5 it also avoids the duplicated-feature failure at off-native resolutions.</p>
+</div>
+
+<h3>The thermal thing nobody measures</h3>
+
+<p>One generation tells me almost nothing about what happens on the tenth. Phones throttle hard under
+sustained compute, and a model that hits 3 seconds cold can be at 6 seconds after a few minutes of
+continuous use. For a product where someone generates twenty headshots in a row, the sustained number
+is the real number. I want a script that runs 50 back to back and logs latency and thermal state per
+generation, and I want that curve early rather than as a nasty surprise.</p>
+
+<h2 id="s7"><span class="num">07</span>The order to learn this in</h2>
+
+<p>Sequenced so that every stage produces something I can look at, and so that I never depend on
+understanding something I haven't built yet.</p>
+
+<div class="step">
+<div class="sn">0</div>
+<h3>Write a diffusion model from scratch</h3>
+<p class="dur">One weekend · ~200 lines · runs on the Mac</p>
+<p>DDPM on MNIST or CIFAR at 32×32. Noise schedule, a small UNet, the training loop, the sampler. Then
+implement DDIM on top and watch the step count drop without retraining.</p>
+<p>Skippable in theory. I don't want to skip it — it's the difference between using these systems and
+understanding them, and everything afterwards stops being cargo-culted. Cheapest understanding on the
+whole list.</p>
+</div>
+
+<div class="step">
+<div class="sn">1</div>
+<h3>Drive SD 1.5 through diffusers, then take the pipeline apart</h3>
+<p class="dur">An evening or two</p>
+<p>Generate some images. Then rewrite the pipeline call as an explicit loop: encode the prompt, make
+the latent, step the scheduler by hand, call the UNet twice for CFG, decode. Print tensor shapes at
+every stage. Swap samplers, sweep CFG from 1 to 15 and watch it go plastic.</p>
+<p>This is the step that converts section 01 from words into something I can debug.</p>
+</div>
+
+<div class="step">
+<div class="sn">2</div>
+<h3>Build the eval harness — before training anything</h3>
+<p class="dur">One day</p>
+<p>ArcFace identity similarity, CLIP prompt score, the compliance checks, the fixed prompt set, and a
+contact-sheet renderer that lays out a grid with scores under each image.</p>
+<p>Doing this first is the highest-leverage ordering choice available. Every experiment after this
+produces a number instead of an impression, and I never have to re-run anything because I forgot to
+measure it.</p>
+</div>
+
+<div class="step">
+<div class="sn">3</div>
+<h3>Train the first LoRA</h3>
+<p class="dur">One weekend, mostly on the dataset</p>
+<p>20 photos, captioned by the rule in section 03. Train on a rented GPU. Checkpoint every 250 steps,
+then run the harness over every checkpoint and plot identity against flexibility. Pick by the curve.</p>
+<p>Then deliberately break it: train to 6000 steps and see what overcooking looks like. Caption
+everything as just <code>"photo of sks person"</code> and watch the background get baked in. Knowing
+the failure signatures by sight is worth the GPU minutes.</p>
+</div>
+
+<div class="step">
+<div class="sn">4</div>
+<h3>Sweep the axes that matter</h3>
+<p class="dur">A weekend of GPU time, mostly unattended</p>
+<p>Rank {8, 16, 32, 64}. LR {5e-5, 1e-4, 2e-4}. Text encoder on/off. Dataset size {10, 20, 30}. Each
+run scored by the harness. This is where the intuition actually forms, and it's cheap — SD 1.5 LoRAs
+train in tens of minutes.</p>
+</div>
+
+<div class="step">
+<div class="sn">5</div>
+<h3>Add IP-Adapter-FaceID and ControlNet</h3>
+<p class="dur">A weekend</p>
+<p>Score zero-shot FaceID against the trained LoRA on the same harness — that's the comparison the
+whole project is organised around. Then stack them and see whether the combination beats either.
+ControlNet for framing, which is what makes the compliance numbers move.</p>
+</div>
+
+<div class="step">
+<div class="sn">6</div>
+<h3>Convert to Core ML</h3>
+<p class="dur">Two to three weekends · budget more than feels reasonable</p>
+<p>Fold the LoRA into the base weights first — that's what makes this tractable at all. Convert each of
+the three networks separately. Get FP16 working end to end on the Mac before attempting anything
+clever. Then open Xcode's performance report and find out where the ops actually landed.</p>
+<p>Expect this stage to be 80% debugging conversion errors and 20% everything else.</p>
+</div>
+
+<div class="step">
+<div class="sn">7</div>
+<h3>Quantize, with the harness running</h3>
+<p class="dur">One weekend</p>
+<p>FP16 → 8-bit → 6-bit → 4-bit, per network, scoring identity and compliance at every level. The
+output is a table: size, peak memory, latency, identity, compliance. That table is the deliverable — it
+answers "how small can this get before it stops being me", which is the actual question underneath this
+entire project.</p>
+</div>
+
+<div class="step">
+<div class="sn">8</div>
+<h3>Add LCM-LoRA and measure sustained load</h3>
+<p class="dur">A few days</p>
+<p>Step count down to 4–8, CFG to 1. Re-score — distillation costs some quality and I want to know how
+much. Then run 50 generations back to back and plot the thermal curve.</p>
+</div>
+
+<h2 id="s8"><span class="num">08</span>Reading list</h2>
+
+<h3>Foundations — read before writing code</h3>
+<div class="reads">
+<a class="read" href="https://lilianweng.github.io/posts/2021-07-11-diffusion-models/">
+  <div class="rt"><span class="tag post">post</span><span class="rn">What are Diffusion Models?</span><span class="must">START HERE</span></div>
+  <div class="rd">Lilian Weng. The single best explanation of the maths, derived properly but readably. If one link on this page matters, it's this one.</div></a>
+<a class="read" href="https://huggingface.co/blog/annotated-diffusion">
+  <div class="rt"><span class="tag code">code</span><span class="rn">The Annotated Diffusion Model</span></div>
+  <div class="rd">Hugging Face. Line-by-line PyTorch implementation of DDPM. Read alongside Weng — theory in one window, code in the other.</div></a>
+<a class="read" href="https://jalammar.github.io/illustrated-stable-diffusion/">
+  <div class="rt"><span class="tag post">post</span><span class="rn">The Illustrated Stable Diffusion</span></div>
+  <div class="rd">Jay Alammar. Visual walkthrough of how the three networks fit together. Fastest way to get the mental model.</div></a>
+<a class="read" href="https://sander.ai/2022/01/31/diffusion.html">
+  <div class="rt"><span class="tag post">post</span><span class="rn">Diffusion models are autoencoders</span></div>
+  <div class="rd">Sander Dieleman. A different angle that makes the whole thing click differently. His <a href="https://sander.ai/2022/05/26/guidance.html">guidance post</a> is the best thing written on CFG.</div></a>
+<a class="read" href="https://arxiv.org/abs/2006.11239">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">DDPM (Ho et al., 2020)</span></div>
+  <div class="rd">The one that made diffusion work. Read after Weng, not before.</div></a>
+<a class="read" href="https://arxiv.org/abs/2010.02502">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">DDIM (Song et al., 2020)</span></div>
+  <div class="rd">Deterministic sampling and step-skipping. Where "50 steps instead of 1000" comes from.</div></a>
+<a class="read" href="https://arxiv.org/abs/2112.10752">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">Latent Diffusion / Stable Diffusion</span><span class="must">CORE</span></div>
+  <div class="rd">Rombach et al. The VAE-latent-space move that made all of this run on consumer hardware. This is the model I'm building on.</div></a>
+<a class="read" href="https://arxiv.org/abs/2207.12598">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">Classifier-Free Guidance</span></div>
+  <div class="rd">Ho &amp; Salimans. Short. Explains the 2× cost I'll be fighting all the way through.</div></a>
+</div>
+
+<h3>Personalisation and identity</h3>
+<div class="reads">
+<a class="read" href="https://arxiv.org/abs/2106.09685">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">LoRA (Hu et al., 2021)</span><span class="must">CORE</span></div>
+  <div class="rd">Written for LLMs, applies everywhere. Short and unusually clear. The low-rank argument is the whole idea.</div></a>
+<a class="read" href="https://arxiv.org/abs/2208.12242">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">DreamBooth</span></div>
+  <div class="rd">Subject-driven generation, the rare-token trick, and prior preservation loss. Even though I won't use full DreamBooth, the dataset and captioning thinking comes from here.</div></a>
+<a class="read" href="https://arxiv.org/abs/2208.01618">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">Textual Inversion</span></div>
+  <div class="rd">Learning a single embedding. Worth reading for how little is needed to steer a frozen model.</div></a>
+<a class="read" href="https://arxiv.org/abs/2308.06721">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">IP-Adapter</span><span class="must">CORE</span></div>
+  <div class="rd">Decoupled cross-attention for image prompting. The zero-training half of my comparison. Read the ablation on why concatenation loses.</div></a>
+<a class="read" href="https://arxiv.org/abs/2401.07519">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">InstantID</span></div>
+  <div class="rd">Face-embedding conditioning done properly, zero-shot. Shows why an ArcFace embedding beats a CLIP one for identity.</div></a>
+<a class="read" href="https://arxiv.org/abs/2312.04461">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">PhotoMaker</span></div>
+  <div class="rd">Stacked ID embeddings from multiple reference photos. A different answer to the same question.</div></a>
+<a class="read" href="https://arxiv.org/abs/2302.05543">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">ControlNet</span></div>
+  <div class="rd">Spatial conditioning. The zero-convolution initialisation trick is elegant and shows up elsewhere.</div></a>
+<a class="read" href="https://arxiv.org/abs/1801.07698">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">ArcFace</span></div>
+  <div class="rd">The face-recognition loss behind my identity metric. Understand what the embedding space means before trusting cosines in it.</div></a>
+</div>
+
+<h3>Speed — step distillation</h3>
+<div class="reads">
+<a class="read" href="https://arxiv.org/abs/2311.05556">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">LCM-LoRA</span><span class="must">CORE</span></div>
+  <div class="rd">Distillation packaged as a LoRA, so it stacks with mine. The most practical speed win available.</div></a>
+<a class="read" href="https://arxiv.org/abs/2310.04378">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">Latent Consistency Models</span></div>
+  <div class="rd">The theory under LCM-LoRA — learning to jump to the ODE solution instead of integrating along it.</div></a>
+<a class="read" href="https://arxiv.org/abs/2311.17042">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">Adversarial Diffusion Distillation (SDXL-Turbo)</span></div>
+  <div class="rd">1–4 steps via a distillation objective with an adversarial term. Note what it costs in output diversity.</div></a>
+</div>
+
+<h3>On-device — the half that decides the project</h3>
+<div class="reads">
+<a class="read" href="https://machinelearning.apple.com/research/neural-engine-transformers">
+  <div class="rt"><span class="tag post">post</span><span class="rn">Deploying Transformers on the Apple Neural Engine</span><span class="must">ESSENTIAL</span></div>
+  <div class="rd">Apple. The specific tensor layouts and attention reshaping that keep a model resident on ANE instead of falling back. Nothing else explains this as concretely.</div></a>
+<a class="read" href="https://github.com/apple/ml-stable-diffusion">
+  <div class="rt"><span class="tag code">code</span><span class="rn">apple/ml-stable-diffusion</span><span class="must">ESSENTIAL</span></div>
+  <div class="rd">Working SD → Core ML conversion, quantization, and a Swift inference package. My known-good reference to diff against when conversion goes wrong.</div></a>
+<a class="read" href="https://machinelearning.apple.com/research/stable-diffusion-coreml-apple-silicon">
+  <div class="rt"><span class="tag post">post</span><span class="rn">Stable Diffusion with Core ML on Apple Silicon</span></div>
+  <div class="rd">The writeup accompanying that repo — the reasoning behind the choices, which the code alone doesn't give you.</div></a>
+<a class="read" href="https://apple.github.io/coremltools/docs-guides/">
+  <div class="rt"><span class="tag docs">docs</span><span class="rn">coremltools guides</span></div>
+  <div class="rd">Conversion, compute units, and the optimization section covering palettization, quantization and pruning. Read the palettization overview properly.</div></a>
+<a class="read" href="https://onnxruntime.ai/docs/">
+  <div class="rt"><span class="tag docs">docs</span><span class="rn">ONNX Runtime docs</span></div>
+  <div class="rd">Where the TensorRT and Android paths start. Worth knowing even though Core ML is this project's target.</div></a>
+<a class="read" href="https://pytorch.org/docs/stable/quantization.html">
+  <div class="rt"><span class="tag docs">docs</span><span class="rn">PyTorch quantization</span></div>
+  <div class="rd">Per-tensor vs per-channel, calibration, PTQ vs QAT. The vocabulary is the same everywhere, so learn it once here.</div></a>
+<a class="read" href="https://arxiv.org/abs/2211.10438">
+  <div class="rt"><span class="tag paper">paper</span><span class="rn">SmoothQuant</span></div>
+  <div class="rd">The activation-outlier problem and the trick of migrating difficulty from activations into weights. Written for LLMs, same disease as diffusion UNets.</div></a>
+</div>
+
+<h3>Tools I'll actually be typing</h3>
+<div class="reads">
+<a class="read" href="https://huggingface.co/docs/diffusers">
+  <div class="rt"><span class="tag docs">docs</span><span class="rn">diffusers</span></div>
+  <div class="rd">The library everything runs through. Read the pipeline source once — it's unusually readable and section 01 becomes concrete.</div></a>
+<a class="read" href="https://github.com/kohya-ss/sd-scripts">
+  <div class="rt"><span class="tag code">code</span><span class="rn">kohya-ss/sd-scripts</span></div>
+  <div class="rd">The de-facto LoRA training scripts. Every hyperparameter in section 03 is a flag in here.</div></a>
+<a class="read" href="https://github.com/deepinsight/insightface">
+  <div class="rt"><span class="tag code">code</span><span class="rn">insightface</span></div>
+  <div class="rd">ArcFace models for the identity metric, plus the face analysis used by IP-Adapter-FaceID and InstantID.</div></a>
+<a class="read" href="https://github.com/cloneofsimo/minDiffusion">
+  <div class="rt"><span class="tag code">code</span><span class="rn">minDiffusion</span></div>
+  <div class="rd">Minimal readable DDPM. A reference to check my step-0 implementation against.</div></a>
+<a class="read" href="https://github.com/ml-explore/mlx-examples">
+  <div class="rt"><span class="tag code">code</span><span class="rn">mlx-examples</span></div>
+  <div class="rd">Apple silicon training and inference, including a Stable Diffusion example. Relevant to the question of whether on-device training is possible at all.</div></a>
+<a class="read" href="https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker">
+  <div class="rt"><span class="tag docs">docs</span><span class="rn">MediaPipe Face Landmarker</span></div>
+  <div class="rd">Landmarks for the compliance checks — head height ratio, eye line, roll angle.</div></a>
+</div>
+
+<h2 id="s9"><span class="num">09</span>Open questions</h2>
+
+<p>Things I genuinely don't know the answer to, written down now so I notice when I find out.</p>
+
+<ul>
+<li><strong>How far can the UNet be quantized before the face stops being mine?</strong> The whole
+project narrows to this. 8-bit is probably fine. 4-bit palettized is the interesting case, and I
+suspect identity degrades before general image quality does — a face is a high-frequency,
+low-tolerance thing and a slightly-wrong nose is much more visible than slightly-wrong fabric. Untested
+suspicion.</li>
+
+<li><strong>Does ArcFace cosine track human recognition?</strong> It's my primary instrument and I'm
+taking its validity on faith. At some point I should check a handful of outputs against people who know
+me and see whether the ranking agrees. If it doesn't, a chunk of section 04 needs rethinking.</li>
+
+<li><strong>Can the LoRA be trained on the device at all?</strong> Core ML is built for inference. MLX
+does train and runs on iOS. A per-user LoRA trained entirely on the phone would make the privacy story
+airtight instead of merely good, and I have no idea whether it's an afternoon or a wall.</li>
+
+<li><strong>Does LCM distillation damage identity more than it damages general quality?</strong> Four
+steps is much less room to converge on a specific face. If distillation costs more identity than
+quantization does, the whole optimisation ordering changes.</li>
+
+<li><strong>Do the three networks want different compute units?</strong> Plausible that the UNet is
+fastest on ANE while the VAE decoder is fastest on GPU, in which case the pipeline is heterogeneous and
+I'll be paying handoff costs between them. No idea until I measure.</li>
+
+<li><strong>Is LoRA-plus-FaceID actually better than either alone,</strong> or do they fight? Both are
+steering identity through cross-attention by different routes. Stacking them might compound or might
+produce something averaged and generic.</li>
+</ul>
+
+<h2 id="s10"><span class="num">10</span>Extensions — going further</h2>
+
+<p>Things that aren't in the main plan but are worth doing once it works. The first three make the
+results I get from section 07 more trustworthy. The rest are what I'd change if this stopped being a
+learning project and became something people actually use.</p>
+
+<h3>Making the measurements honest</h3>
+
+<div class="step">
+<div class="sn">A</div>
+<h3>Score identity with a different face model than the one doing the conditioning</h3>
+<p class="dur">An afternoon · slot into step 2</p>
+<p>IP-Adapter-FaceID conditions on an ArcFace embedding. If I then score it with the same ArcFace, the
+zero-shot route is being graded by the model it was optimised to please, and the LoRA-vs-FaceID
+comparison in step 5 is tilted before it starts. Score with a second recognizer — a different backbone
+or training set (AdaFace, FaceNet) — and keep the ArcFace number alongside it. If the two disagree, that
+disagreement is the interesting result.</p>
+</div>
+
+<div class="step">
+<div class="sn">B</div>
+<h3>Test on more faces than mine</h3>
+<p class="dur">A few evenings collecting photos · reuses the whole harness</p>
+<p>With one identity I can't tell whether an effect is real or just something about my face. Five to
+ten people — friends who agree to it, or public-domain portrait sets — varied across skin tone, age,
+beards and glasses. SD 1.5 and the face encoders both have known demographic gaps, and a single face
+will never show them to me.</p>
+</div>
+
+<div class="step">
+<div class="sn">C</div>
+<h3>Measure the quality ceiling before touching Core ML</h3>
+<p class="dur">A weekend of GPU time · between steps 5 and 6</p>
+<p>Run the best pipeline at full precision — FP32/FP16, 30 steps, no distillation, no quantization — on
+every test identity. That's the best the phone version can ever be. Then every later stage (conversion,
+8/6/4-bit, LCM) gets reported as a drop from this ceiling, one change at a time. That separates
+"the model isn't good enough" from "the compression broke it", which otherwise look identical in a
+contact sheet.</p>
+</div>
+
+<h3>If this ever becomes a product</h3>
+
+<div class="callout warn">
+<span class="label">The LoRA path doesn't survive contact with real users</span>
+<p>Folding a LoRA into the weights works for one face converted once on a Mac. For many users it means
+re-running coremltools per person — which can't run on iOS — and shipping a separate ~1 GB compiled
+UNet to each of them. And training on a rented GPU means the selfies leave the phone, which removes the
+reason to be on-device at all. For a real product, on-device realistically means zero-shot identity, or
+the approach below.</p>
+</div>
+
+<div class="step">
+<div class="sn">D</div>
+<h3>Edit, don't generate</h3>
+<p class="dur">A few weekends · a second pipeline to compare on the harness</p>
+<p>A headshot is mostly my real face with new lighting, background, clothes and framing — and the
+selfie already has the face pixels. So: segment face and hair, inpaint everything else (suit,
+backdrop, shoulders) with SD 1.5 inpainting plus ControlNet for framing, then a low-strength img2img
+pass (~0.2–0.35) over the whole image so the lighting on the face matches the new scene.</p>
+<p>Identity is preserved by construction rather than approximated. Low-strength img2img only runs a
+fraction of the denoising steps, so it's cheaper before any distillation. And quantization damage lands
+mostly on fabric and backdrop, where it's tolerable, instead of on the nose. The costs: pose and
+expression are locked to the input selfie, wide-angle lens distortion carries through, and lighting
+mismatch becomes the new hard problem.</p>
+</div>
+
+<div class="step">
+<div class="sn">E</div>
+<h3>Try LoRA training on the device itself</h3>
+<p class="dur">Open-ended · could be an afternoon, could be a wall</p>
+<p>The real answer to open question 3. MLX on an M-series Mac first, with gradient checkpointing and a
+low rank, and measure time, peak memory and thermal state per step. Only if that looks survivable,
+try it on an iPhone. Even a negative result — "it takes 90 minutes and throttles to half speed" — is
+worth writing up.</p>
+</div>
+
+<div class="step">
+<div class="sn">F</div>
+<h3>Benchmark a newer compact base model against SD 1.5</h3>
+<p class="dur">A weekend</p>
+<p>SD 1.5 is the right model to learn on — small, documented, supported by apple/ml-stable-diffusion.
+It isn't the ceiling for on-device image quality in 2026. Compact models built for phones (Snap's
+SnapGen, NVIDIA's SANA) and photoreal SD 1.5 fine-tunes are worth running through the same harness.
+Expect worse tooling: fewer adapters, no Core ML reference to diff against.</p>
+</div>
+
+<div class="callout">
+<span class="label">Two things to settle before shipping anything</span>
+<p><strong>Licensing.</strong> The pretrained insightface/ArcFace models are released for
+non-commercial research only, and IP-Adapter-FaceID and InstantID both depend on them. Fine for
+learning; a product needs a commercially licensed face encoder or one I train myself.</p>
+<p><strong>ID photos.</strong> Passport authorities require an unaltered photograph of the person.
+A diffusion-generated face isn't that, however compliant its geometry. The compliance checks are a
+great measurement instrument; for real ID photos the product would have to be the edit pipeline —
+background replacement and cropping, face untouched — not generation.</p>
+</div>
+
+<hr>
+
+<p style="color:var(--faint);font-size:15px">Sizes and parameter counts above are the commonly cited
+figures for SD 1.5 and worth confirming against the actual checkpoints. Every hyperparameter in section
+03 is a starting point to sweep from, not a result. Only stages 0 and 1 have been measured so far
+(see Build status). Everything else waits for the harness in step 2.</p>
+
+</article>
+</div>
+</div>
+
+<footer>
+  <div class="wrap">DML · on-device headshot generator · study notes</div>
+</footer>
+
+<script>
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  var secs  = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function sync(){
+    var y = window.scrollY + 90, idx = 0;
+    for (var i = 0; i < secs.length; i++){ if (secs[i] && secs[i].offsetTop <= y) idx = i; }
+    links.forEach(function(a,i){ a.classList.toggle('on', i === idx); });
+  }
+  var tick = false;
+  window.addEventListener('scroll', function(){
+    if (!tick){ window.requestAnimationFrame(function(){ sync(); tick = false; }); tick = true; }
+  }, {passive:true});
+  sync();
+})();
+</script>
+
+</body>
+</html>

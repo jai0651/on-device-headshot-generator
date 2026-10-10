@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Evaluation · DML headshot generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav class="sitenav"><div class="wrap">
+  <a class="brand" href="index.html">DML · headshots</a>
+  <a class="pg" href="index.html">Start here</a>
+  <a class="pg" href="models.html">Models</a>
+  <a class="pg" href="training.html">Training</a>
+  <a class="pg" href="generation.html">Generation</a>
+  <a class="pg on" href="evaluation.html">Evaluation</a>
+  <a class="pg" href="infra.html">Where it runs</a>
+  <a class="pg" href="results.html">Results</a>
+  <a class="pg" href="../on-device-headshot-generator.html">Study notes ↗</a>
+</div></nav>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">DML · under the hood</p>
+    <h1>Evaluation</h1>
+    <p class="standfirst">How a picture becomes numbers: the three instruments, exactly what each one computes, and the tests that proved each instrument measures what it claims before any of its numbers were trusted.</p>
+  </div>
+</header>
+<div class="wrap"><div class="single"><article>
+
+
+<h2 id="why">Why this exists before any training</h2>
+
+<p>Every later decision is a measurement: which LoRA checkpoint, whether FaceID beats the LoRA, whether
+4-bit quantization broke the face. Without these instruments, each of those would be a guess made by
+squinting at pictures. And one number alone can be fooled: a LoRA that memorised the selfies scores
+brilliantly on identity and ignores every prompt. So there are three instruments, measuring things
+that trade against each other.</p>
+
+<figure>
+<svg viewBox="0 0 860 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The evaluation harness">
+<title>From one generated image to its scores</title>
+<defs><marker id="e-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<rect x="20" y="130" width="150" height="70" rx="8" fill="#161d29" stroke="#2e3a4d"/><text x="95" y="158" font-size="12" fill="#dde3ec">generated image</text><text x="95" y="176" font-size="10" fill="#76818f">+ its prompt</text><text x="95" y="190" font-size="10" fill="#76818f">+ your 17 photos</text>
+<rect x="220" y="20" width="400" height="86" rx="8" fill="#10151f" stroke="#5ec27e"/>
+<text x="420" y="42" font-size="12" fill="#5ec27e">1 · identity: is it the same person?</text>
+<text x="420" y="61" font-size="10" fill="#93a0b4">SCRFD finds the face → 5-point alignment → 112×112</text>
+<text x="420" y="77" font-size="10" fill="#93a0b4">→ ArcFace R50 and ArcFace R100 → two 512-d vectors</text>
+<text x="420" y="94" font-size="10" fill="#76818f">cosine against the centroid of your photos' vectors</text>
+<rect x="220" y="122" width="400" height="86" rx="8" fill="#10151f" stroke="#7aa2d8"/>
+<text x="420" y="144" font-size="12" fill="#7aa2d8">2 · CLIP: did it follow the prompt?</text>
+<text x="420" y="163" font-size="10" fill="#93a0b4">image → CLIP image tower → 768-d</text>
+<text x="420" y="179" font-size="10" fill="#93a0b4">prompt → CLIP text tower → 768-d</text>
+<text x="420" y="196" font-size="10" fill="#76818f">score = 100 × cosine</text>
+<rect x="220" y="224" width="400" height="86" rx="8" fill="#10151f" stroke="#f0883e"/>
+<text x="420" y="246" font-size="12" fill="#f0883e">3 · compliance: is it a usable ID photo?</text>
+<text x="420" y="265" font-size="10" fill="#93a0b4">MediaPipe: 478 landmarks, blendshapes, head pose</text>
+<text x="420" y="281" font-size="10" fill="#93a0b4">+ segmenter: background / hair / face-skin masks</text>
+<text x="420" y="298" font-size="10" fill="#76818f">→ 13 pass/fail checks from geometry and pixel stats</text>
+<rect x="670" y="120" width="170" height="90" rx="8" fill="#161d29" stroke="#f0b429"/>
+<text x="755" y="146" font-size="12" fill="#f0b429">outputs</text>
+<text x="755" y="166" font-size="10" fill="#93a0b4">scores.csv</text>
+<text x="755" y="182" font-size="10" fill="#93a0b4">summary.json (per group)</text>
+<text x="755" y="198" font-size="10" fill="#93a0b4">contact sheet</text>
+</g>
+<path d="M170 150 L218 70" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/><path d="M170 165 H218" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/><path d="M170 180 L218 262" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/><path d="M620 63 L668 145" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/><path d="M620 165 H668" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/><path d="M620 267 L668 190" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#e-ar)"/>
+</svg>
+<figcaption>All three run on the Mac's CPU. None of this ever needs a GPU pod.</figcaption>
+</figure>
+
+<h2 id="identity">Instrument 1: identity</h2>
+
+<p>A face-recognition network maps a face to a 512-number vector, trained so that two photos of the same
+person land close together and photos of different people land far apart. "Close" is measured by
+cosine similarity: 1 means identical direction, 0 means unrelated.</p>
+
+<div class="grid2">
+<div class="card"><h4>Two recognizers, on purpose</h4>
+<p><strong>Primary</strong>: buffalo_l (ArcFace R50, trained on WebFace600K).
+<strong>Secondary</strong>: antelopev2 (ArcFace R100, trained on Glint360K). Different backbone
+<em>and</em> different training data.</p></div>
+<div class="card"><h4>The circularity rule</h4>
+<p>IP-Adapter-FaceID is conditioned on buffalo_l's embedding. Scoring FaceID with buffalo_l would be
+grading it with the model it was built to please. So for FaceID, <strong>only the secondary score
+counts</strong>, and stage 5 reports the secondary for every method.</p></div>
+</div>
+
+<h3>Proving it works: 1000 real photo pairs</h3>
+
+<p>Before trusting it, the instrument was run on LFW's standard test split: 500 pairs of the same
+person, 500 pairs of different people, all real photos.</p>
+<img class="shot" src="../outputs/stage2/identity_validation.png" alt="LFW genuine vs impostor histograms">
+<p class="shotcap">Green: same person (mean 0.64). Red: different people (mean 0.01). The two recognizers agree on 98.7% of decisions.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th></th><th>Primary · buffalo_l</th><th>Secondary · antelopev2</th></tr></thead>
+<tbody>
+<tr><td>AUC (1.0 = perfect separation)</td><td>0.993</td><td>0.992</td></tr>
+<tr><td>Equal error rate</td><td>1.5%</td><td>2.2%</td></tr>
+<tr><td>True accepts at 1% false accepts</td><td>98.5%</td><td>98.3%</td></tr>
+<tr><td>Same / different person mean</td><td>0.64 / 0.01</td><td>0.67 / 0.01</td></tr>
+</tbody></table></div>
+
+<div class="callout key">
+<span class="label">The threshold: 0.30</span>
+<p>The histograms leave a clear gap between about 0.2 and 0.35. The mathematically "equal error"
+point is 0.15, which sits on the edge of the stranger distribution, so the project uses
+<strong>cos ≥ 0.30</strong> as "this is the same person". It's also what the on-device identity guard
+will use to reject a bad generation.</p>
+</div>
+
+<h2 id="clip">Instrument 2: prompt adherence (CLIP)</h2>
+
+<p>CLIP was trained to put an image and its caption close together. So <code>100 × cos(image,
+prompt)</code> goes up when the picture shows what was asked for. It's crude: typical scores sit in
+the 20s, and a few points is a real difference. But it moves the right way when a model stops
+listening, which is exactly the failure identity can't see.</p>
+
+<h2 id="compliance">Instrument 3: compliance, 13 checks</h2>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Check</th><th>Computed from</th><th>Pass</th></tr></thead>
+<tbody>
+<tr><td>one face</td><td>landmarker face count</td><td>exactly 1</td></tr>
+<tr><td>head height</td><td>chin landmark to the top of the hair/face mask, ÷ image height</td><td>0.50–0.69 (US passport)</td></tr>
+<tr><td>eye line</td><td>iris landmarks, height above the bottom edge</td><td>0.56–0.69 (US passport)</td></tr>
+<tr><td>centred</td><td>midpoint of the cheek landmarks vs image centre</td><td>≤ 5% of width</td></tr>
+<tr><td>roll / yaw / pitch</td><td>eye-line angle; the landmarker's 4×4 head-pose matrix</td><td>≤ 5° / 10° / 12°</td></tr>
+<tr><td>head in frame</td><td>topmost hair/face pixel</td><td>below the top 2%</td></tr>
+<tr><td>plain background</td><td>luminance std of background-class pixels</td><td>≤ 14 <em>(to calibrate)</em></td></tr>
+<tr><td>even lighting</td><td>left vs right face-skin brightness (mask eroded 9 px)</td><td>≤ 15% <em>(to calibrate)</em></td></tr>
+<tr><td>sharp</td><td>variance of the Laplacian on the face, rescaled to 256 px</td><td>≥ 60 <em>(to calibrate)</em></td></tr>
+<tr><td>eyes open / mouth closed</td><td>blendshapes eyeBlink, jawOpen</td><td>≤ 0.5 / ≤ 0.25</td></tr>
+</tbody></table></div>
+
+<h3>Proving it works: break images on purpose</h3>
+
+<p>A mutation test takes a base image and injects one known defect at a time: tilt it 12°, blur it,
+shift it off-centre, paint a busy background, darken one side of the face, zoom until the crown leaves
+the frame. The matching check has to flip from pass to fail. It caught <strong>8 of 9</strong>
+testable defects. The untested ones (background, shadow, sharpness) were already failing on every
+base image, because plain SD 1.5 never produced a truly compliant photo to break.</p>
+<img class="shot" src="../outputs/stage2/compliance_validation.jpg" alt="compliance mutation test sheet">
+<p class="shotcap">Each base image, then one mutation per tile, with the checks that still pass.</p>
+
+<h2 id="prompts">The fixed prompt set</h2>
+
+<p>8 prompts × 3 frozen seeds = 24 images per method. Every checkpoint, method and (later) quantization
+level generates exactly these, which is what makes the numbers comparable. <code>{subject}</code> is
+"ohwx man" with the LoRA, "a man" otherwise. The set is versioned: v2 fixed two prompts whose images
+hid the face, and scores are only compared within one version.</p>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Group</th><th>Prompt</th><th>Tests</th></tr></thead>
+<tbody>
+<tr><td>identity</td><td>corporate headshot, navy suit, plain grey backdrop, softbox lighting</td><td>the product's core case</td></tr>
+<tr><td>identity</td><td>outdoors, overcast daylight, smiling</td><td>new light and expression</td></tr>
+<tr><td>identity</td><td>three-quarter view photo, head turned slightly</td><td>a new angle</td></tr>
+<tr><td>identity</td><td>wearing glasses, office background</td><td>an accessory never in the training photos</td></tr>
+<tr><td>flexibility</td><td>as an astronaut, helmet off, face clearly visible, on the moon</td><td>does it still obey a strange prompt?</td></tr>
+<tr><td>flexibility</td><td>oil painting portrait, renaissance style</td><td>identity under a style change</td></tr>
+<tr><td>flexibility</td><td>red hoodie on a beach at sunset, facing the camera</td><td>clothes and scene never seen</td></tr>
+<tr><td>compliance</td><td>modern colour ID photo, plain white background, neutral, front facing</td><td>the passport use case</td></tr>
+</tbody></table></div>
+
+<h2 id="baseline">The floor: plain SD 1.5</h2>
+
+<p>Every method has to beat this. With no identity conditioning, every image is a stranger
+(identity ≈ 0), and not one of 24 images passes every compliance check.</p>
+<img class="shot" src="../outputs/stage2/baseline/contact_sheet.jpg" alt="baseline contact sheet">
+<p class="shotcap">Prompt set v1 baseline. The astronaut and hoodie rows are why v2 exists: there's no face in them to measure.</p>
+
+<hr><div class="pagelinks"><a href="generation.html"><span class="t">← Generation</span><span class="d">previous page</span></a><a href="infra.html"><span class="t">Where it runs →</span><span class="d">next page</span></a></div>
+</article></div></div>
+<footer><div class="wrap">DML · on-device headshot generator · Evaluation</div></footer>
+</body>
+</html>

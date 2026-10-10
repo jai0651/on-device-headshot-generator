@@ -1,0 +1,87 @@
+<!-- title: An on-device headshot generator, from the inside | eyebrow: DML · start here | lede: A selfie in, a professional headshot out, of you, on the phone, with nothing uploaded. These pages explain how it's being built and measured, without needing to read any code. -->
+
+<h2 id="what">What this is</h2>
+
+<p>The product idea: take one or a few selfies and produce studio-quality headshots (clean backdrop,
+good lighting, proper framing) that are recognisably <em>you</em>, entirely on an iPhone. Today's
+AI headshot apps upload 10–20 photos and train a model per customer on a server. This project asks
+how much of that can happen with no upload and no per-user training.</p>
+
+<p>It's being built in nine stages, each producing something measurable, on Stable Diffusion 1.5:
+small enough to eventually run on a phone, and the best-documented open image model. Every claim
+on these pages comes from a run that was actually executed.</p>
+
+<div class="kpi">
+<div class="box"><span class="v">0.67 vs 0.49</span><span class="k">one-selfie FaceID vs trained LoRA (identity)</span></div>
+<div class="box"><span class="v">8 / 27</span><span class="k">edit-path headshots passing all 13 ID checks</span></div>
+<div class="box"><span class="v">1.34 s</span><span class="k">per headshot of you, Neural Engine, 8-bit, 4 steps</span></div>
+<div class="box"><span class="v">~$0.51</span><span class="k">total rented-GPU cost so far</span></div>
+</div>
+
+<h2 id="journey">The journey</h2>
+
+<figure>
+<svg viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="The nine stages and their status">
+<title>Nine stages</title>
+<defs><marker id="j-ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 1 L7 4 L0 7 z" fill="#4d586a"/></marker></defs>
+<g font-family="ui-monospace,Menlo,monospace" text-anchor="middle">
+<text x="215" y="26" font-size="11" fill="#93a0b4">LEARN + MEASURE</text>
+<text x="645" y="26" font-size="11" fill="#93a0b4">IDENTITY → PHONE</text>
+<rect x="20" y="40" width="190" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="115" y="64" font-size="12" fill="#5ec27e">0 · DDPM from scratch</text><text x="115" y="82" font-size="10" fill="#93a0b4">how diffusion works</text><text x="115" y="98" font-size="10" fill="#5ec27e">✓ done</text>
+<rect x="230" y="40" width="190" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="325" y="64" font-size="12" fill="#5ec27e">1 · SD 1.5 taken apart</text><text x="325" y="82" font-size="10" fill="#93a0b4">every call, every shape</text><text x="325" y="98" font-size="10" fill="#5ec27e">✓ pixel-exact</text>
+<rect x="20" y="132" width="190" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="115" y="156" font-size="12" fill="#5ec27e">2 · eval harness</text><text x="115" y="174" font-size="10" fill="#93a0b4">identity · CLIP · compliance</text><text x="115" y="190" font-size="10" fill="#5ec27e">✓ validated</text>
+<rect x="230" y="132" width="190" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="325" y="156" font-size="12" fill="#5ec27e">3 · first face LoRA</text><text x="325" y="174" font-size="10" fill="#93a0b4">17 photos, 13 minutes</text><text x="325" y="190" font-size="10" fill="#5ec27e">✓ identity 0.47</text>
+<rect x="20" y="224" width="400" height="56" rx="8" fill="#10151f" stroke="#2e3a4d" stroke-dasharray="4 3"/><text x="220" y="248" font-size="12" fill="#93a0b4">4 · LoRA sweeps (rank, lr, scale)</text><text x="220" y="266" font-size="10" fill="#76818f">built, parked · only if stage 5 needs a stronger benchmark</text>
+<rect x="450" y="40" width="390" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="645" y="64" font-size="12.5" fill="#5ec27e">5 · FaceID + ControlNet + edit path</text><text x="645" y="82" font-size="10" fill="#93a0b4">identity with no per-user training · framing</text><text x="645" y="98" font-size="10" fill="#5ec27e">✓ FaceID beats LoRA · edit path: 8/27 fully compliant</text>
+<rect x="450" y="132" width="120" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="510" y="156" font-size="11.5" fill="#5ec27e">6 · Core ML ✓</text><text x="510" y="174" font-size="10" fill="#76818f">onto the</text><text x="510" y="188" font-size="10" fill="#76818f">Neural Engine</text>
+<rect x="585" y="132" width="120" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="645" y="156" font-size="11.5" fill="#5ec27e">7 · quantize ✓</text><text x="645" y="174" font-size="10" fill="#76818f">8 / 6 / 4-bit:</text><text x="645" y="188" font-size="10" fill="#76818f">still you?</text>
+<rect x="720" y="132" width="120" height="72" rx="8" fill="#10151f" stroke="#5ec27e" stroke-width="1.5"/><text x="780" y="156" font-size="11.5" fill="#5ec27e">8 · LCM ✓</text><text x="780" y="174" font-size="10" fill="#76818f">4–8 steps,</text><text x="780" y="188" font-size="10" fill="#76818f">sustained speed</text>
+<rect x="450" y="224" width="390" height="56" rx="8" fill="#0b0f17" stroke="#7aa2d8" stroke-dasharray="4 3"/><text x="645" y="248" font-size="11.5" fill="#7aa2d8">the question underneath all of it</text><text x="645" y="266" font-size="10" fill="#93a0b4">how small and fast can this get before it stops being you?</text>
+</g>
+<path d="M210 76 H228 M325 112 L115 130 M210 168 H228 M420 168 L448 100 M570 168 H583 M705 168 H718 M645 112 V130" stroke="#4d586a" stroke-width="1.5" fill="none" marker-end="url(#j-ar)"/>
+</svg>
+<figcaption>Green = done and measured. Gold = in progress. Grey = next.</figcaption>
+</figure>
+
+<h2 id="read">How to read these pages</h2>
+
+<div class="pagelinks">
+<a href="models.html"><span class="t">Models →</span><span class="d">Which networks are open-source and which we trained. What goes in and out of each, and where our additions plug into Stable Diffusion's UNet.</span></a>
+<a href="training.html"><span class="t">Training →</span><span class="d">The two things trained here, a diffusion model from scratch and a face LoRA: what's frozen, what learns, one training step drawn out.</span></a>
+<a href="generation.html"><span class="t">Generation →</span><span class="d">Prompt to picture, call by call with tensor shapes. The four ways identity and layout get added to the same loop.</span></a>
+<a href="evaluation.html"><span class="t">Evaluation →</span><span class="d">How an image becomes numbers, and the tests that proved each instrument works before its numbers were trusted.</span></a>
+<a href="infra.html"><span class="t">Where it runs →</span><span class="d">Mac vs rented GPU for every step, what crosses between them, the pod lifecycle, and every session's cost.</span></a>
+<a href="results.html"><span class="t">Results →</span><span class="d">What each stage produced, with the actual images, curves and tables.</span></a>
+</div>
+
+<p>For the theory underneath (why diffusion works, the four ways to teach a model a face, the on-device
+conversion plan), see the original <a href="../on-device-headshot-generator.html">study notes</a>.</p>
+
+<h2 id="glossary">Glossary</h2>
+
+<div class="tablewrap"><table>
+<thead><tr><th>Term</th><th>Meaning here</th></tr></thead>
+<tbody>
+<tr><td>Diffusion model</td><td>A network trained to remove a little noise from an image. Run repeatedly from pure noise, a picture appears.</td></tr>
+<tr><td>Stable Diffusion 1.5</td><td>The open image model everything builds on: a text encoder, a UNet and a VAE, ~1.07B parameters in total.</td></tr>
+<tr><td>Latent</td><td>SD's compressed image space: 512×512×3 pixels ↔ 4×64×64 numbers (48× smaller). The loop runs here.</td></tr>
+<tr><td>UNet</td><td>The 860M-parameter network that predicts the noise at each step. 95% of the compute.</td></tr>
+<tr><td>VAE</td><td>Converts between pixels and latents. Encoder used for training, decoder at the end of generation.</td></tr>
+<tr><td>Timestep / steps</td><td>How noisy the current latent is (999 = pure noise, 0 = clean). Generation walks down in 25 steps.</td></tr>
+<tr><td>Sampler / scheduler</td><td>The numerical method that turns noise predictions into the next latent. We use DPM++ 2M Karras.</td></tr>
+<tr><td>CFG (guidance)</td><td>Running the UNet with and without the prompt and pushing away from "no prompt". Makes images obey; doubles the cost.</td></tr>
+<tr><td>Embedding</td><td>A vector of numbers that stands for something: a prompt (77×768) or a face (512).</td></tr>
+<tr><td>Cosine similarity</td><td>How aligned two vectors are, from −1 to 1. Our identity score: ≥ 0.30 means "same person".</td></tr>
+<tr><td>Cross-attention</td><td>The UNet layers where the image "looks at" the prompt. Where identity methods act.</td></tr>
+<tr><td>LoRA</td><td>A small trainable add-on (B·A) to frozen weight matrices. Ours: 3.19M parameters, 6 MB, one face.</td></tr>
+<tr><td>Trigger phrase</td><td><code>ohwx man</code>: the words the LoRA binds your face to.</td></tr>
+<tr><td>Checkpoint</td><td>A snapshot of the LoRA saved during training (every 250 steps), each scored to pick the best.</td></tr>
+<tr><td>IP-Adapter-FaceID</td><td>A pretrained add-on that feeds a face-recognition embedding into the UNet through extra attention. No per-person training.</td></tr>
+<tr><td>ControlNet</td><td>A copy of the UNet's encoder that reads a pose skeleton and steers the layout.</td></tr>
+<tr><td>Recognizer (ArcFace)</td><td>A face-recognition network: face in, 512-d identity vector out. Two independent ones measure identity.</td></tr>
+<tr><td>CLIP score</td><td>How well an image matches its prompt, from 0 to 100. Typical values are in the 20s.</td></tr>
+<tr><td>Compliance</td><td>13 objective ID-photo checks: head size, eye line, centring, pose, background, lighting, sharpness, eyes, mouth.</td></tr>
+<tr><td>Fixed prompt set</td><td>8 prompts × 3 frozen seeds that every method generates, so scores are comparable.</td></tr>
+<tr><td>Pod</td><td>A GPU rented from RunPod by the minute, created for one job and destroyed after.</td></tr>
+<tr><td>Core ML / ANE</td><td>Apple's on-device model format and its Neural Engine accelerator (stages 6–8).</td></tr>
+</tbody></table></div>
