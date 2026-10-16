@@ -1,5 +1,7 @@
 # On-device headshot generator
 
+![On-device headshot generator](docs/thumbnail.png)
+
 A selfie in, a professional headshot out, on Apple hardware, with nothing uploaded. Most AI headshot
 apps upload 10–20 photos and train a model per customer on a server. This project measures how much of
 that can happen on the device, with no upload and no per-user training.
